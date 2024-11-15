@@ -18,7 +18,7 @@ train_dataloader:
       type: Compose
       ops: ~
   shuffle: True
-  batch_size: 8
+  batch_size: 2
   num_workers: 4
   drop_last: True 
 
@@ -37,7 +37,7 @@ eval_train_dataloader:
       type: Compose
       ops: ~
   shuffle: False
-  batch_size: 8
+  batch_size: 2
   num_workers: 4
   drop_last: False 
 
@@ -57,7 +57,7 @@ val_dataloader:
       ops: ~ 
 
   shuffle: False
-  batch_size: 8
+  batch_size: 2
   num_workers: 4
   drop_last: False
 
@@ -76,7 +76,7 @@ test_dataloader:
       ops: ~ 
 
   shuffle: False
-  batch_size: 8
+  batch_size: 2
   num_workers: 4
   drop_last: False
 
@@ -95,7 +95,7 @@ real_dataloader:
       ops: ~ 
 
   shuffle: False
-  batch_size: 8
+  batch_size: 2
   num_workers: 4
   drop_last: False
 
@@ -112,7 +112,7 @@ eval_train_dataset:
     ops: 
       # - {type: Resize, size: 639, max_size: 640}
       # - {type: PadToSize, spatial_size: 640}
-      - {type: Resize, size: [640, 640], antialias: True}
+      - {type: Resize, size: [640, 640], antialias: False}
       # - {type: ToImageTensor}
       # - {type: ConvertDtype}
       - {type: Normalize, mean: [0.0, 0.0, 0.0], std: [255.0, 255.0, 255.0]}
@@ -129,7 +129,7 @@ val_dataset:
     ops: 
       # - {type: Resize, size: 639, max_size: 640}
       # - {type: PadToSize, spatial_size: 640}
-      - {type: Resize, size: [640, 640], antialias: True}
+      - {type: Resize, size: [640, 640], antialias: False}
       # - {type: ToImageTensor}
       # - {type: ConvertDtype}
       - {type: Normalize, mean: [0.0, 0.0, 0.0], std: [255.0, 255.0, 255.0]}
@@ -146,7 +146,7 @@ test_dataset:
     ops: 
       # - {type: Resize, size: 639, max_size: 640}
       # - {type: PadToSize, spatial_size: 640}
-      - {type: Resize, size: [640, 640], antialias: True}
+      - {type: Resize, size: [640, 640], antialias: False}
       # - {type: ToImageTensor}
       # - {type: ConvertDtype}
       - {type: Normalize, mean: [0.0, 0.0, 0.0], std: [255.0, 255.0, 255.0]}
@@ -163,7 +163,7 @@ real_dataset:
     ops: 
       # - {type: Resize, size: 639, max_size: 640}
       # - {type: PadToSize, spatial_size: 640}
-      - {type: Resize, size: [640, 640], antialias: True}
+      - {type: Resize, size: [640, 640], antialias: False}
       # - {type: ToImageTensor}
       # - {type: ConvertDtype}
       - {type: Normalize, mean: [0.0, 0.0, 0.0], std: [255.0, 255.0, 255.0]}

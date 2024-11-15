@@ -18,6 +18,7 @@ from pycocotools import mask as coco_mask
 
 from src.core import register
 from src.misc.instances import Instances
+from src.misc.debugger import Debugger
 from .lmot_utils import RawImageReader
 from .lmot_detection import ConvertCocoPolysToMask
 from pycocotools.coco import COCO
@@ -82,7 +83,9 @@ class LMOTTracking(Dataset):
         self.return_masks = return_masks
         self.remap_category = remap_category
         self.image_n_bit = image_n_bit
-        self.raw_image_reader = RawImageReader(image_n_bit)
+        self.raw_image_reader = RawImageReader(
+                                    is_dark='dark' in os.path.basename(ann_file) or 'real' in os.path.basename(ann_file),
+                                    n_bit=image_n_bit)
 
         
         self.num_frames = num_frames
@@ -189,13 +192,14 @@ class LMOTTracking(Dataset):
         orig_image_size = targets["orig_size"].tolist() # (w, h)
         gt_instances = Instances(image_size=tuple(img_shape), orig_image_size=tuple(orig_image_size), image_id=image_id)  # (w, h)
         gt_instances.boxes = targets['boxes']
-        gt_instances.labels = targets['labels']
-        gt_instances.obj_ids = targets['obj_ids']
-        gt_instances.area = targets['area']
+        gt_instances.labels = targets['labels'].long()
+        gt_instances.obj_ids = targets['obj_ids'].long()
+        # gt_instances.area = targets['area']
         return gt_instances
 
 
     def __getitem__(self, index):
+        # self.current_num_frame = 5 #TODO: 
         img_id = self.valid_img_ids[index]
         img_id_start, img_id_end, interval = self._get_sample_range(img_id)
 
@@ -214,6 +218,21 @@ class LMOTTracking(Dataset):
             images.append(img_)
             targets.append(self._targets_to_instances(target_, img_shape=(img_.shape[2], img_.shape[1])))
 
+        # if 1: #TODO:
+        #     debugger = Debugger(
+        #         pause=True,
+        #         save_dir='output/debugger_vis',
+        #         show_pad=50)
+        #     # import pdb; pdb.set_trace()
+        #     for idx in range(len(images)):
+        #         # sample = samples[idx]
+        #         img_s, targets_s = images[idx], targets[idx]
+        #         debugger.add_image_with_bbox(img=img_s, meta_data=targets_s, img_id='frame_{}'.format(idx), box_type='cxcywh_norm')
+            
+        #     debugger.save_all_imgs()
+        #     import pdb; pdb.set_trace()
+
+
         return images, targets
 
 
@@ -228,7 +247,7 @@ class LMOTTracking(Dataset):
     
     def __len__(self):
         return len(self.valid_img_ids) #TODO:
-        # return min(50, len(self.valid_img_ids))
+        # return min(100, len(self.valid_img_ids))
 
 @register
 def labels_getter_func_for_mot_in_SanitizeBoundingBox(inputs):
@@ -266,7 +285,9 @@ class LMOTEvalTracking(LMOTTracking):
         self.return_masks = return_masks
         self.remap_category = remap_category
         self.image_n_bit = image_n_bit
-        self.raw_image_reader = RawImageReader(image_n_bit)
+        self.raw_image_reader = RawImageReader(
+                                    is_dark='dark' in os.path.basename(ann_file) or 'real' in os.path.basename(ann_file),
+                                    n_bit=image_n_bit)
 
         video_ids = []
         video_names = []
@@ -314,16 +335,32 @@ class LMOTEvalTracking(LMOTTracking):
         
         img_id = self.valid_img_ids[index]
         image, targets = self._load_img_and_target(img_id)
-        orig_image = image.permute(1, 2, 0).numpy().astype(np.uint8) # H x W x 3
+        # if 'dark' in self.ann_file or 'real' in self.ann_file:
+        #     scale = 127.0 / (image.mean() + 1e-8)
+        #     orig_image = (image * scale).clamp(0, 255).permute(1, 2, 0).numpy().astype(np.uint8) # H x W x 3
+        # else:
+        orig_image = image.clamp(0, 255).permute(1, 2, 0).numpy().astype(np.uint8) # H x W x 3
+        orig_targets = self._targets_to_instances(targets, img_shape=(orig_image.shape[1], orig_image.shape[0]))
 
         if self._transforms is not None:
             image, targets = self._transforms(image, targets)
 
         targets = self._targets_to_instances(targets, img_shape=(image.shape[2], image.shape[1]))
 
+        # if 1: #TODO:
+        #     debugger = Debugger(
+        #         pause=True,
+        #         save_dir='output/debugger_vis',
+        #         show_pad=50)
+        #     debugger.add_image_with_bbox(img=image, meta_data=targets, img_id='frame', box_type='xyxy')
+            
+        #     debugger.save_all_imgs()
+        #     import pdb; pdb.set_trace()
+
         output = {
             'origin_image': orig_image, 
             'origin_image_wh': (orig_image.shape[1], orig_image.shape[0]),
+            'origin_targets': orig_targets,
             'image_id': img_id,
             'targets': targets,
             'image': image,

@@ -16,16 +16,16 @@ def main(args, ) -> None:
     '''
     dist.init_distributed()
 
-    assert not all([args.tuning, args.resume]), \
-        'Only support from_scrach or resume or tuning at one time'
+    # assert not all([args.tuning, args.resume]), 'Only support from_scrach or resume or tuning at one time'
 
     cfg = YAMLConfig(
         args.config,
         opts=args.opts,
         resume=args.resume, 
+        auto_resume=args.auto_resume,
         use_amp=args.amp,
-        tuning=args.tuning,
-        save=not args.run_type,
+        # tuning=args.tuning,
+        run_type=args.run_type,
         eval_data=args.eval_data
     )
 
@@ -45,7 +45,8 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--config', '-c', type=str, )
     parser.add_argument('--resume', '-r', type=str, )
-    parser.add_argument('--tuning', '-t', type=str, )
+    # parser.add_argument('--tuning', '-t', type=str, )
+    parser.add_argument('--auto_resume', action='store_true')
     parser.add_argument('--run_type', default='train', choices=['train', 'eval', 'track'])
     parser.add_argument('--eval_data', default='val', choices=['val', 'test', 'real', 'eval_train', 'train'])
     parser.add_argument('--amp', action='store_true', default=False,)

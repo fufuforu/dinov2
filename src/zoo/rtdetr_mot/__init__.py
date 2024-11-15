@@ -8,4 +8,4 @@ from .decoder import RTDETRTransformerForMOT
 from .postprocessor import RTDETRMotPostProcessor
 from .criterion import ClipSetCriterion
 from .query_interact_module import QueryInteractionModule
-
+from .matcher import HungarianMatcherMOT

@@ -9,3 +9,9 @@ opencv-python==4.10.0.82
 # motmetrics==1.4.0
 tqdm==4.66.5
 lap==0.4.0
+openpyxl==3.1.5
+# xlsxWriter==3.2.0
+pyparsin==3.1.4
+cycler==0.12.1
+kiwisolver==1.4.7
+importlib-resources==6.4.5

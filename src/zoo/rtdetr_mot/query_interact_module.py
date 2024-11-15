@@ -11,17 +11,11 @@ from typing import Optional, List
 from src.zoo.rtdetr.utils import inverse_sigmoid
 from src.misc.boxes import Boxes, pairwise_iou
 from src.misc.box_ops import box_cxcywh_to_xyxy
-from src.misc.instances import Instances
+from src.misc.instances import Instances, BatchInstances
 
 from src.nn.quantization.lsq_plus import LinearLSQ
 from src.nn.quantization.multi_head_attention import QuantMultiheadAttention
 from src.core import register
-
-def drop_ratio_tracks(track_instances: Instances, drop_probability: float) -> Instances:
-    if drop_probability > 0 and len(track_instances) > 0:
-        keep_idxes = torch.rand_like(track_instances.scores) > drop_probability
-        track_instances = track_instances[keep_idxes]
-    return track_instances
 
 
 class QueryInteractionBase(nn.Module):
@@ -125,62 +119,81 @@ class QueryInteractionModule(QueryInteractionBase):
 
         self.activation = nn.ReLU(True)
 
-    def _drop_ratio_tracks(self, track_instances: Instances) -> Instances:
-        return drop_ratio_tracks(track_instances, self.drop_ratio)
+    def _drop_ratio_tracks(self, track_instances: BatchInstances) -> BatchInstances:
+        if self.drop_ratio > 0 and track_instances.valid_mask.sum() > 0:
+            keep_mask = torch.rand_like(track_instances.scores) > self.drop_ratio # b, N
+            # import pdb; pdb.set_trace()
+            track_instances.valid_mask = track_instances.valid_mask * keep_mask
+        return track_instances
 
-    def _add_fp_tracks(self, track_instances: Instances, active_track_instances: Instances) -> Instances:
-        inactive_instances = track_instances[track_instances.obj_ids < 0]
 
-        # add fp for each active track in a specific probability.
-        fp_prob = torch.ones_like(active_track_instances.scores) * self.fp_ratio
-        selected_active_track_instances = active_track_instances[torch.bernoulli(fp_prob).bool()]
+    def _add_fp_tracks(self, track_instances: BatchInstances) -> BatchInstances:
+        inactive_mask = track_instances.obj_ids < 0 # b, n
+        active_mask = track_instances.valid_mask # b, n
+        assert (inactive_mask * active_mask).sum() == 0, 'inactive and active tracks overlapped!'
 
-        if len(inactive_instances) > 0 and len(selected_active_track_instances) > 0:
-            num_fp = len(selected_active_track_instances)
-            if num_fp >= len(inactive_instances):
-                fp_track_instances = inactive_instances
-            else:
-                inactive_boxes = Boxes(box_cxcywh_to_xyxy(inactive_instances.pred_boxes))
-                selected_active_boxes = Boxes(box_cxcywh_to_xyxy(selected_active_track_instances.pred_boxes))
-                ious = pairwise_iou(inactive_boxes, selected_active_boxes)
-                # select the fp with the largest IoU for each active track.
-                fp_indexes = ious.max(dim=0).indices
+        fp_prob = torch.ones_like(track_instances.scores) * self.fp_ratio # b, n
+        selected_active_mask = torch.bernoulli(fp_prob).bool() * active_mask # b, n
 
-                # remove duplicate fp.
-                fp_indexes = torch.unique(fp_indexes)
-                fp_track_instances = inactive_instances[fp_indexes]
+        if inactive_mask.sum() > 0 and selected_active_mask.sum() > 0:
+            boxes1 = box_cxcywh_to_xyxy(track_instances.pred_boxes).detach() # b, n, 4
+            
+            ious = pairwise_iou(boxes1, boxes1) # b, n, n
+            
+            # select the inactive tracks only for active tracks
+            ious_mask = selected_active_mask.unsqueeze(dim=-1) * inactive_mask.unsqueeze(dim=-2) # b, n, n
+            eye_mask = torch.eye(ious.shape[1], ious.shape[2]).unsqueeze(dim=0).repeat(ious.shape[0],1,1).to(ious_mask)
+            ious_mask = ious_mask & (~eye_mask)
+            ious[~ious_mask] = -torch.inf
 
-            #TODO: set -2 instead of -1 to ensure that these tracks will not be selected in matching.
-            # fp_track_instances.obj_ids = torch.zeros_like(fp_track_instances.obj_ids) - 2 # MOTR do not do this
-            merged_track_instances = Instances.cat([active_track_instances, fp_track_instances])
-            return merged_track_instances
+            # select the fp with the largest IoU for each active track.
+            fp_ious, fp_indexes = ious.max(dim=-1) # b, n
 
-        return active_track_instances
+            # import pdb; pdb.set_trace();
+            # selected_active_indexes = selected_active_mask.nonzero() # m, 2
+            # track_instances.valid_mask[selected_active_indexes[0], selected_active_indexes[1]]
 
-    def _select_active_tracks(self, data: dict) -> Instances:
-        track_instances: Instances = data['track_instances']
+            for b in range(fp_indexes.shape[0]):
+                track_instances.valid_mask[b, fp_indexes[b][selected_active_mask[b]]] = True
+                # TODO: set -2 instead of -1 to ensure that these tracks will not be selected in matching.
+                # track_instances.obj_ids[b, fp_indexes[b][selected_active_mask[b]]] = -2  # MOTR do not do this
+
+        return track_instances
+
+
+    def _select_active_tracks(self, data: dict) -> BatchInstances:
+        track_instances: BatchInstances = data['track_instances']
         if self.training:
-            active_idxes = (track_instances.obj_ids >= 0) & (track_instances.iou > 0.5)
-            active_track_instances = track_instances[active_idxes]
-            # set -2 instead of -1 to ensure that these tracks will not be selected in matching.
-            active_track_instances = self._drop_ratio_tracks(active_track_instances)
+            active_mask = (track_instances.obj_ids >= 0) & (track_instances.iou > 0.5) # b, n
+            track_instances.valid_mask = track_instances.valid_mask * active_mask
+            track_instances = self._drop_ratio_tracks(track_instances)
             if self.fp_ratio > 0:
-                active_track_instances = self._add_fp_tracks(track_instances, active_track_instances)
+                track_instances = self._add_fp_tracks(track_instances)
         else:
-            active_track_instances = track_instances[track_instances.obj_ids >= 0]
+            active_mask = track_instances.obj_ids >= 0 # b, n
+            track_instances.valid_mask = track_instances.valid_mask * active_mask
 
-        return active_track_instances
+        return track_instances
 
-    def _update_track_embedding(self, track_instances: Instances) -> Instances:
-        if len(track_instances) == 0:
+    def _update_track_embedding(self, track_instances: BatchInstances) -> BatchInstances:
+        if track_instances.valid_mask.sum() <= 0:
             return track_instances
-        tgt = track_instances.output_embedding
-        dim = tgt.shape[1]
-        query_feat = track_instances.query_feat
-        query_pos = track_instances.query_pos
-        q = k = query_pos + tgt
 
-        tgt2 = self.self_attn(q[:, None], k[:, None], value=tgt[:, None])[0][:, 0]
+        tgt = track_instances.output_embedding # b, n, d
+        query_feat = track_instances.query_feat  # b, n, d
+        query_pos = track_instances.query_pos  # b, n, d
+        q = k = query_pos + tgt  # b, n, d
+
+        #TODO: get the attn mask for valid trackss
+        if track_instances.valid_mask.sum() < track_instances.valid_mask.numel():
+            attn_mask = torch.full([tgt.shape[0], tgt.shape[1], tgt.shape[1]], False, dtype=torch.bool, device=tgt.device)
+            for b in range(tgt.shape[0]):
+                attn_mask[b, ~track_instances.valid_mask[b], :] = True
+                attn_mask[b, :, ~track_instances.valid_mask[b]] = True
+            attn_mask = attn_mask.unsqueeze(dim=1).tile(1, self.self_attn.num_heads, 1, 1).reshape(tgt.shape[0]*self.self_attn.num_heads, tgt.shape[1], tgt.shape[1]) 
+        else:
+            attn_mask = None
+        tgt2 = self.self_attn(q.transpose(0,1), k.transpose(0,1), value=tgt.transpose(0,1), attn_mask=attn_mask)[0].transpose(0,1) # b, n, d
         tgt = tgt + self.dropout1(tgt2)
         tgt = self.norm1(tgt)
 
@@ -197,15 +210,19 @@ class QueryInteractionModule(QueryInteractionBase):
         query_feat2 = self.linear_feat2(self.dropout_feat1(self.activation(self.linear_feat1(tgt))))
         query_feat = query_feat + self.dropout_feat2(query_feat2)
         query_feat = self.norm_feat(query_feat)
-        track_instances.query_feat = query_feat
+        track_instances.query_feat = query_feat # b, n, d
 
-        track_instances.ref_pts = inverse_sigmoid(track_instances.pred_boxes[:, :track_instances.ref_pts.shape[1]].detach().clone())
+        track_instances.ref_pts = inverse_sigmoid(track_instances.pred_boxes[..., :track_instances.ref_pts.shape[-1]].detach().clone())
+        
         return track_instances
 
-    def forward(self, data) -> Instances:
-        active_track_instances = self._select_active_tracks(data)
-        active_track_instances = self._update_track_embedding(active_track_instances)
-        init_track_instances: Instances = data['init_track_instances']
-        merged_track_instances = Instances.cat([init_track_instances, active_track_instances])
+
+    def forward(self, data) -> BatchInstances:
+        track_instances = self._select_active_tracks(data)
+        track_instances = BatchInstances.remove_invalid(track_instances)
+        track_instances = self._update_track_embedding(track_instances)
+        init_track_instances: BatchInstances = data['init_track_instances']
+        merged_track_instances = BatchInstances.cat([init_track_instances, track_instances])
+
         return merged_track_instances
 

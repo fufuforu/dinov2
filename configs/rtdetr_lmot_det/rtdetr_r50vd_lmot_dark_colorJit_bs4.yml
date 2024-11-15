@@ -1,7 +1,7 @@
 __include__: [
-  '../dataset/lmot_light_isp_detection.yml',
+  '../dataset/lmot_dark_detection.yml',
   '../runtime.yml',
-  './include/dataloader.yml',
+  './include/dataloader_colorJit.yml',
   './include/optimizer.yml',
   './include/rtdetr_r50vd.yml',
 ]
@@ -15,10 +15,6 @@ HybridEncoder:
 
 RTDETRTransformer:
   attn: 'QuantMultiheadAttention'
-
-
-SetCriterion:
-  losses: ['focal', 'boxes', ]
 
 
 epoches: 20

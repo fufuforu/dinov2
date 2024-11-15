@@ -84,7 +84,7 @@ class RTDETRMotPostProcessor(nn.Module):
             # logits, boxes = torch.cat(outputs['pred_logits'], dim=0), torch.cat(outputs['pred_boxes'], dim=0)
     
             bbox_pred = torchvision.ops.box_convert(boxes, in_fmt='cxcywh', out_fmt='xyxy')
-            bbox_pred *= orig_target_sizes[idx:idx+1].repeat(1, 2).unsqueeze(1)
+            bbox_pred *= orig_target_sizes[idx].repeat(1, 2).unsqueeze(dim=1)
 
             if self.use_focal_loss:
                 scores = F.sigmoid(logits)
@@ -107,9 +107,10 @@ class RTDETRMotPostProcessor(nn.Module):
                 labels = torch.tensor([LABEL2CATEGORY_DICT[self.remap_category][int(x.item())] for x in labels.flatten()]).to(boxes.device).reshape(labels.shape)
             
             # import pdb; pdb.set_trace()
-            results.append(
-                dict(labels=labels[0], boxes=boxes[0], scores=scores[0])
-            )
+            results.append([
+                dict(labels=labels[bi], boxes=boxes[bi], scores=scores[bi]) \
+                for bi in range(labels.shape[0])
+            ])
 
         # TODO for onnx export
         if self.deploy_mode:

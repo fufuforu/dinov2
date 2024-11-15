@@ -1,0 +1,19 @@
+主干网络：
+Deep Residual Learning for Image Recognition
+Attention is all you need (Transformer开山之作，自然语言处理任务)
+An image is worth 16x16 words: Transformers for image recognition at scale
+Swin transformer: Hierarchical vision transformer using shifted windows
+
+经典检测算法：
+Fast r-cnn
+Faster R-CNN: Towards real-time object detection with region proposal networks
+Mask r-cnn
+You only look once: Unified, real-time object detection
+End-to-end object detection with transformers
+Deformable detr: Deformable transformers for end-to-end object detection
+Dab-detr: Dynamic anchor boxes are better queries for detr
+Dn-detr: Accelerate detr training by introducing query denoising
+Dino: Detr with improved denoising anchor boxes for end-to-end object detection
+
+检测算法综述：
+Object detection in 20 years: A survey

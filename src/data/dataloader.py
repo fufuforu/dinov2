@@ -2,7 +2,7 @@ import torch
 import torch.utils.data as data
 
 from src.core import register
-
+from src.misc.instances import Instances, BatchInstances
 
 __all__ = ['DataLoader']
 
@@ -30,7 +30,14 @@ def default_collate_fn(items):
 def mot_collate_fn(items):
     '''collate_fn for end-to-end mot
     '''    
-    assert len(items) == 1, 'Currently, only support batch size = 1, but find batch size = {}'.format(len(items))
-    images, targets = items[0]
-    images = [img.unsqueeze(dim=0) for img in images]
-    return images, targets
+    # assert len(items) == 1, 'Currently, only support batch size = 1, but find batch size = {}'.format(len(items))
+    # images, targets = items[0]
+    # images = [img.unsqueeze(dim=0) for img in images]
+    images = [x[0] for x in items]
+    images = list(zip(*images))
+    images = [torch.stack(img) for img in images]
+    
+    target_instances = [x[1] for x in items]
+    target_instances = list(zip(*target_instances))
+    target_instances = [BatchInstances.stack(t) for t in target_instances]
+    return images, target_instances

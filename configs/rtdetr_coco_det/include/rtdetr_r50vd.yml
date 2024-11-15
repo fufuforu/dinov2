@@ -1,5 +1,5 @@
 task: detection
-
+tuning: ''
 model: RTDETR
 criterion: SetCriterion
 postprocessor: RTDETRPostProcessor

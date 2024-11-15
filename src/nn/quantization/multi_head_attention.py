@@ -285,7 +285,7 @@ def multi_head_attention_forward(query: Tensor,
     else:
         assert bias_k is None
         assert bias_v is None
-
+    
     q = q.contiguous().view(tgt_len, bsz, num_heads, head_dim).permute(1, 2, 0, 3)
     if k is not None:
         k = k.contiguous().view(-1, bsz, num_heads, head_dim).permute(1, 2, 0, 3)
@@ -326,7 +326,7 @@ def multi_head_attention_forward(query: Tensor,
     if norm_k is not None:
         k = norm_k(k)
 
-    q = q_act(q)
+    q = q_act(q) # bs, num_head, tgt_len, head_dim
     k = k_act(k)
     attn_output_weights = q @ k.transpose(-2, -1) * scaling
     #torch.bmm(q, k.transpose(-1, -2))
@@ -335,6 +335,8 @@ def multi_head_attention_forward(query: Tensor,
     assert list(attn_output_weights.size()) == [bsz, num_heads, tgt_len, src_len]
 
     if attn_mask is not None:
+        if attn_mask.ndim == 3 and attn_mask.shape[0] == bsz * num_heads:
+            attn_mask = attn_mask.reshape(bsz, num_heads, tgt_len, src_len)
         if attn_mask.dtype == torch.bool:
             attn_output_weights.masked_fill_(attn_mask, float('-inf'))
         else:
@@ -348,9 +350,23 @@ def multi_head_attention_forward(query: Tensor,
             float('-inf'),
         )
         attn_output_weights = attn_output_weights.view(bsz, num_heads, tgt_len, src_len)
+    
+    # if attn_mask is not None:# and attn_mask.shape[-1] < 20:
+    #     import pdb; pdb.set_trace()
+    if attn_mask is not None and ((~attn_mask).sum(dim=-1) == 0).any():
+        # attn_output_weights_exp = attn_output_weights.exp()
+        # attn_output_weights_exp_sum = attn_output_weights_exp.sum(dim=-1, keepdim=True)
+        # attn_output_weights_exp_sum[attn_output_weights_exp_sum == 0] += 1e-8
+        # attn_output_weights_bk = attn_output_weights_exp / attn_output_weights_exp_sum
+        # if (attn_output_weights_exp == float('inf')).sum() > 0:
+        #     import pdb; pdb.set_trace()
 
-    attn_output_weights = F.softmax(
-        attn_output_weights, dim=-1)
+        logsumexp = attn_output_weights.logsumexp(dim=-1, keepdim=True)
+        logsumexp = logsumexp.masked_fill(logsumexp == -torch.inf, 0)
+        attn_output_weights = (attn_output_weights - logsumexp).exp()
+    else:
+        attn_output_weights = F.softmax(attn_output_weights, dim=-1)
+
     #print(attn_output_weights.shape)
     attn_output_weights = F.dropout(attn_output_weights, p=dropout_p, training=training)
 
@@ -364,6 +380,7 @@ def multi_head_attention_forward(query: Tensor,
     #print(v)
 
     attn_output = attn_output_weights @ v #.transpose(-2, -1)
+
     #torch.bmm(attn_output_weights, v)
     attn_output = attn_output.view(bsz * num_heads, tgt_len, head_dim)
     assert list(attn_output.size()) == [bsz * num_heads, tgt_len, head_dim]

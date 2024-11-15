@@ -104,20 +104,40 @@ lmot_category2name = {
 lmot_category2label = {k: i for i, k in enumerate(lmot_category2name.keys())}
 lmot_label2category = {v: k for k, v in lmot_category2label.items()}
 
+# handle soda-d 
+
+sodad_category2name = {
+    1: 'people', # 1
+    2: 'rider', # 2
+    3: 'bicycle', # 3
+    4: 'motor', # 4
+    5: 'vehicle', # 5
+    6: 'traffic-sign', # 6
+    7: 'traffic-light', # 7
+    8: 'traffic-camera', # 8
+    9: 'warning-cone', # 9
+}
+
+sodad_category2label = {k: i for i, k in enumerate(lmot_category2name.keys())}
+sodad_label2category = {v: k for k, v in lmot_category2label.items()}
+
 
 
 
 LABEL2CATEGORY_DICT = {
     'coco': mscoco_label2category,
     'lmot': lmot_label2category,
+    'sodad': sodad_label2category
 }
 
 CATEGORY2LABEL_DICT = {
     'coco': mscoco_category2label,
     'lmot': lmot_category2label,
+    'sodad': sodad_category2label
 }
 
 CATEGORY2NAME_DICT = {
     'coco': mscoco_category2name,
-    'lmot': lmot_category2name
+    'lmot': lmot_category2name,
+    'sodad': sodad_category2name
 }

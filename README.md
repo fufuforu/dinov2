@@ -1,4 +1,3 @@
-<<<<<<< HEAD
 ## TODO
 <details>
 <summary> see details </summary>
@@ -109,25 +108,30 @@ export CUDA_VISIBLE_DEVICES=0,1,2,3
 torchrun --nproc_per_node=4 tools/train.py -c configs/rtdetr/rtdetr_r50vd_6x_coco.yml
 ```
 
-- Evaluation the detection performance:
+- Evaluation the detection performance (Only for detection model):
 
 ```shell
 # val on multi-gpu
 export CUDA_VISIBLE_DEVICES=0,1,2,3
-torchrun --nproc_per_node=4 tools/train.py -c configs/rtdetr/rtdetr_r50vd_6x_coco.yml -r path/to/checkpoint --run_type eval --eval_data val
+torchrun --nproc_per_node=4 tools/train.py -c configs/rtdetr/rtdetr_r50vd_6x_coco.yml --run_type eval --eval_data val --resume path/to/checkpoint
 
 # val on single-gpu
 export CUDA_VISIBLE_DEVICES=0
-python tools/train.py -c configs/rtdetr/rtdetr_r50vd_6x_coco.yml -r path/to/checkpoint --run_type eval --eval_data val
+python tools/train.py -c configs/rtdetr/rtdetr_r50vd_6x_coco.yml --run_type eval --eval_data val --resume path/to/checkpoint
 ```
 
 
-- Evaluation the tracking performance:
+- Evaluation the tracking performance (Only for Tracking model):
 
 ```shell
-# only support track on single-gpu
+# track on single-gpu
+export CUDA_VISIBLE_DEVICES=0,1,2,3
+torchrun --nproc_per_node=4 tools/train.py -c configs/rtdetr/rtdetr_r50vd_6x_coco.yml  --run_type track --eval_data val --resume path/to/checkpoint
+
+
+# track on single-gpu
 export CUDA_VISIBLE_DEVICES=0
-python tools/train.py -c configs/rtdetr/rtdetr_r50vd_6x_coco.yml -r path/to/checkpoint --run_type track --eval_data val
+python tools/train.py -c configs/rtdetr/rtdetr_r50vd_6x_coco.yml  --run_type track --eval_data val --resume path/to/checkpoint
 ```
 
 
@@ -139,7 +143,7 @@ python tools/train.py -c configs/rtdetr/rtdetr_r50vd_6x_coco.yml -r path/to/chec
 <summary>Export</summary>
 
 ```shell
-python tools/export_onnx.py -c configs/rtdetr/rtdetr_r18vd_6x_coco.yml -r path/to/checkpoint --check
+python tools/export_onnx.py -c configs/rtdetr/rtdetr_r18vd_6x_coco.yml --resume path/to/checkpoint --check
 ```
 </details>
 
@@ -153,6 +157,3 @@ python tools/export_onnx.py -c configs/rtdetr/rtdetr_r18vd_6x_coco.yml -r path/t
 
 2. add `-t path/to/checkpoint` (optinal) to tuning rtdetr based on pretrained checkpoint. see [training script details](./tools/README.md).
 </details>
-=======
-# DINOv2-RT-DETR
->>>>>>> ce587dc85d8824946556eb601a18dca6f9429bbb

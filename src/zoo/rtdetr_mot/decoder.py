@@ -14,7 +14,7 @@ from src.zoo.rtdetr.denoising import get_contrastive_denoising_training_group
 from src.zoo.rtdetr.utils import deformable_attention_core_func, get_activation, inverse_sigmoid
 from src.zoo.rtdetr.utils import bias_init_with_prob
 from src.nn.quantization.multi_head_attention import QuantMultiheadAttention
-from src.misc.instances import Instances
+from src.misc.instances import Instances, BatchInstances
 
 from src.core import register
 
@@ -158,6 +158,7 @@ class TransformerDecoderLayer(nn.Module):
         super(TransformerDecoderLayer, self).__init__()
 
         self.n_bit = n_bit
+        self.n_head = n_head
         # self attention
         if attn == 'MultiheadAttention':
             self.self_attn = nn.MultiheadAttention(d_model, n_head, dropout=dropout, batch_first=False)
@@ -206,14 +207,26 @@ class TransformerDecoderLayer(nn.Module):
     def forward_ffn(self, tgt):
         return self.linear2(self.dropout3(self.activation(self.linear1(tgt))))
 
-    def _forward_track_attn(self, tgt, query_pos_embed, num_tracks=0):
-        q = k = self.with_pos_embed(tgt, query_pos_embed)
-        assert num_tracks >= 0, 'Invalid number of tracks'
+    def _forward_track_attn(self, tgt, query_pos_embed, track_query_valid_mask, attn_mask=None):
+        num_tracks = track_query_valid_mask.shape[1] # b, num
+        assert num_tracks >= 0, 'Invalid number of track queries: {}'.format(num_tracks)
         if num_tracks > 0:
-            tgt2 = self.update_attn(q[:, -num_tracks:].transpose(0, 1),
-                                    k[:, -num_tracks:].transpose(0, 1),
-                                    tgt[:, -num_tracks:].transpose(0, 1))[0].transpose(0, 1)
-            tgt = torch.cat([tgt[:, :-num_tracks], self.norm4(tgt[:, -num_tracks:]+self.dropout5(tgt2))], dim=1)
+            # generate mask for track queries
+            # import pdb; pdb.set_trace()
+            if attn_mask is not None:
+                attn_mask_track = attn_mask[..., -num_tracks:, -num_tracks:].clone()
+            elif tgt.shape[0] > 1:
+                attn_mask_track = torch.full([tgt.shape[0], num_tracks, num_tracks], False, dtype=torch.bool, device=tgt.device)
+                for b in range(tgt.shape[0]):
+                    attn_mask_track[b, ~track_query_valid_mask[b], :] = True
+                    attn_mask_track[b, :, ~track_query_valid_mask[b]] = True
+                attn_mask_track = attn_mask_track.unsqueeze(dim=1).tile(1, self.n_head, 1, 1).reshape(tgt.shape[0]*self.n_head, num_tracks, num_tracks)   
+            else:
+                attn_mask_track = None
+            tgt_track = tgt[:,-num_tracks:]
+            q = k = self.with_pos_embed(tgt_track, query_pos_embed[:,-num_tracks:])
+            tgt2 = self.update_attn(q.transpose(0, 1), k.transpose(0, 1), tgt_track.transpose(0, 1), attn_mask=attn_mask_track)[0].transpose(0, 1)
+            tgt = torch.cat([tgt[:, :-num_tracks], self.norm4(tgt_track+self.dropout5(tgt2))], dim=1)
         return tgt
 
     def forward(self,
@@ -225,10 +238,11 @@ class TransformerDecoderLayer(nn.Module):
                 attn_mask=None,
                 memory_mask=None,
                 query_pos_embed=None,
-                num_tracks=0):
+                track_query_valid_mask=None
+        ):
         # track self attention 
-        if self.extra_track_attn and num_tracks > 0:
-            tgt = self._forward_track_attn(tgt, query_pos_embed, num_tracks=num_tracks)
+        if self.extra_track_attn and track_query_valid_mask is not None:
+            tgt = self._forward_track_attn(tgt, query_pos_embed, track_query_valid_mask=track_query_valid_mask, attn_mask=attn_mask)
         
         # self attention
         q = k = self.with_pos_embed(tgt, query_pos_embed)
@@ -238,7 +252,6 @@ class TransformerDecoderLayer(nn.Module):
         #         attn_mask.to(torch.bool),
         #         torch.zeros_like(attn_mask),
         #         torch.full_like(attn_mask, float('-inf'), dtype=tgt.dtype))
-
         tgt2, _ = self.self_attn(q.transpose(0,1), k.transpose(0,1), value=tgt.transpose(0,1), attn_mask=attn_mask)
         tgt2 = tgt2.transpose(0,1)
 
@@ -282,7 +295,7 @@ class TransformerDecoder(nn.Module):
                 query_pos_head,
                 attn_mask=None,
                 memory_mask=None,
-                num_tracks=0):
+                track_query_valid_mask=None):
         output = tgt
         dec_out_hs = []
         dec_out_bboxes = []
@@ -295,7 +308,7 @@ class TransformerDecoder(nn.Module):
 
             output = layer(output, ref_points_input, memory,
                            memory_spatial_shapes, memory_level_start_index,
-                           attn_mask, memory_mask, query_pos_embed, num_tracks=num_tracks)
+                           attn_mask, memory_mask, query_pos_embed, track_query_valid_mask=track_query_valid_mask)
 
             inter_ref_bbox = F.sigmoid(bbox_head[i](output) + inverse_sigmoid(ref_points_detach))
 
@@ -344,8 +357,7 @@ class RTDETRTransformerForMOT(nn.Module):
                  eval_idx=-1,
                  eps=1e-2, 
                  aux_loss=True,
-                 attn='MultiheadAttention',
-                 n_bit=None,
+                 attn='MultiheadAttention'
                  ):
 
         super(RTDETRTransformerForMOT, self).__init__()
@@ -366,13 +378,12 @@ class RTDETRTransformerForMOT(nn.Module):
         self.num_decoder_layers = num_decoder_layers
         self.eval_spatial_size = eval_spatial_size
         self.aux_loss = aux_loss
-        self.n_bit = n_bit
 
         # backbone feature projection
         self._build_input_proj_layer(feat_channels)
 
         # Transformer module
-        decoder_layer = TransformerDecoderLayer(hidden_dim, nhead, dim_feedforward, dropout, activation, num_levels, num_decoder_points, attn=attn, n_bit=self.n_bit)
+        decoder_layer = TransformerDecoderLayer(hidden_dim, nhead, dim_feedforward, dropout, activation, num_levels, num_decoder_points, attn=attn)
         self.decoder = TransformerDecoder(hidden_dim, decoder_layer, num_decoder_layers, eval_idx)
 
         self.num_denoising = num_denoising
@@ -518,7 +529,7 @@ class RTDETRTransformerForMOT(nn.Module):
                            spatial_shapes,
                            denoising_class=None,
                            denoising_bbox_unact=None,
-                           track_instances:Instances=None):
+                           track_instances:BatchInstances=None):
         bs, _, _ = memory.shape
         # prepare input for decoder
         if self.training or self.eval_spatial_size is None:
@@ -540,16 +551,12 @@ class RTDETRTransformerForMOT(nn.Module):
         enc_topk_bboxes = reference_points_unact.sigmoid() #F.sigmoid(reference_points_unact)
 
         if track_instances is not None:
-            assert bs == 1, 'only batch size 1 is supported'
-            track_instances.ref_pts = torch.concat([reference_points_unact[0], track_instances.ref_pts[self.num_queries:,:]], dim=0)
-            reference_points_unact = track_instances.ref_pts.unsqueeze(dim=0).repeat(bs, 1, 1)
-
-            # keep the query position
+            track_instances.ref_pts = torch.concat([reference_points_unact, track_instances.ref_pts[:, self.num_queries:,:]], dim=1) # b x N x 4
+            reference_points_unact = track_instances.ref_pts
             track_instances.query_pos = self.query_pos_head(track_instances.ref_pts.detach().sigmoid())
 
         if denoising_bbox_unact is not None:
-            reference_points_unact = torch.concat(
-                [denoising_bbox_unact, reference_points_unact], 1)
+            reference_points_unact = torch.concat([denoising_bbox_unact, reference_points_unact], 1)
         
         enc_topk_logits = enc_outputs_class.gather(dim=1, index=topk_ind.unsqueeze(-1).repeat(1, 1, enc_outputs_class.shape[-1]))
 
@@ -562,31 +569,33 @@ class RTDETRTransformerForMOT(nn.Module):
             target = target.detach()
         
         if track_instances is not None:
-            assert bs == 1, 'only batch size 1 is supported'
-            #TODO: should track_instances.query_feat[self.num_queries:,:]be detached?
-            track_instances.query_feat = torch.concat([target[0], track_instances.query_feat[self.num_queries:,:]], dim=0)
-            target = track_instances.query_feat.unsqueeze(0).repeat(bs, 1, 1)
+            track_instances.query_feat = torch.concat([target, track_instances.query_feat[:, self.num_queries:,:]], dim=1)
+            target = track_instances.query_feat
 
         if denoising_class is not None:
             target = torch.concat([denoising_class, target], 1)
         return target, reference_points_unact.detach(), enc_topk_bboxes, enc_topk_logits
 
 
-    def forward(self, feats, track_instances: Instances, target_instances: List[Instances]=None):
+    def forward(self, feats, track_instances: BatchInstances, target_instances: BatchInstances=None):
 
+        bsz = feats[0].shape[0]
         # input projection and embedding
         (memory, spatial_shapes, level_start_index) = self._get_encoder_input(feats)
         
         # prepare denoising training
+        # import pdb; pdb.set_trace()
         if self.training and self.num_denoising > 0:
             denoising_class, denoising_bbox_unact, attn_mask, dn_meta = \
                 get_contrastive_denoising_training_group(target_instances, \
                     self.num_classes, 
-                    self.num_queries if track_instances is None else len(track_instances), 
+                    self.num_queries if track_instances is None else track_instances.valid_mask.shape[1], 
                     self.denoising_class_embed, 
                     num_denoising=self.num_denoising, 
                     label_noise_ratio=self.label_noise_ratio, 
-                    box_noise_scale=self.box_noise_scale, )
+                    box_noise_scale=self.box_noise_scale, 
+                    n_head=self.nhead,
+                    query_valid_mask=track_instances.valid_mask)                    
         else:
             denoising_class, denoising_bbox_unact, attn_mask, dn_meta = None, None, None, None
 
@@ -604,7 +613,11 @@ class RTDETRTransformerForMOT(nn.Module):
             self.dec_score_head,
             self.query_pos_head,
             attn_mask=attn_mask,
-            num_tracks=0 if track_instances is None else len(track_instances)-self.num_queries)
+            track_query_valid_mask=track_instances.valid_mask[:,self.num_queries:])
+
+        # if (out_hidden_states != out_hidden_states).sum() > 0:
+        #     import pdb; pdb.set_trace()
+
 
         if self.training and dn_meta is not None:
             dn_out_bboxes, out_bboxes = torch.split(out_bboxes, dn_meta['dn_num_split'], dim=2)
@@ -612,13 +625,13 @@ class RTDETRTransformerForMOT(nn.Module):
             dn_out_hidden_states, out_hidden_states = torch.split(out_hidden_states, dn_meta['dn_num_split'], dim=2)
 
         out = {'pred_logits': out_logits[-1], 'pred_boxes': out_bboxes[-1], 'hs': out_hidden_states[-1]}
-
         if self.training and self.aux_loss:
             out['aux_outputs'] = self._set_aux_loss(out_logits[:-1], out_bboxes[:-1])
             # out['aux_outputs'].extend(self._set_aux_loss([enc_topk_logits], [enc_topk_bboxes]))
             # import pdb; pdb.set_trace()
             out['query_selection_aux_outputs'] = {'pred_logits': enc_topk_logits, 'pred_boxes': enc_topk_bboxes}
-            
+
+        out['trained_with_dn'] = self.num_denoising > 0    
         if self.training and dn_meta is not None:
             out['dn_aux_outputs'] = self._set_aux_loss(dn_out_logits, dn_out_bboxes)
             out['dn_meta'] = dn_meta

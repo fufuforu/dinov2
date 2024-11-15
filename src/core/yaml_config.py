@@ -9,17 +9,17 @@ import copy
 import os
 from src.misc import dist
 from .config import BaseConfig
-from .yaml_utils import load_config, merge_config, create, merge_dict, save_config, merge_opts_to_config
+from .yaml_utils import load_config, merge_config, create, merge_dict, save_config, merge_opts_to_config, write_args
 
 
 class YAMLConfig(BaseConfig):
-    def __init__(self, cfg_path: str, opts=None, save=False, **kwargs) -> None:
+    def __init__(self, cfg_path: str, opts=None, run_type='train', auto_resume=False, **kwargs) -> None:
         super().__init__()
 
         cfg = load_config(cfg_path)
         merge_dict(cfg, kwargs)
         merge_opts_to_config(cfg, opts)
-
+        
         # pprint(cfg)
         self.cfg_path = cfg_path
         self.yaml_cfg = cfg 
@@ -29,13 +29,29 @@ class YAMLConfig(BaseConfig):
         self.epoches = cfg.get('epoches', -1)
         self.resume = cfg.get('resume', '')
         self.tuning = cfg.get('tuning', '')
+        # assert not all([self.tuning, self.resume]), 'Only support from_scrach or resume or tuning at one time'
+
         self.sync_bn = cfg.get('sync_bn', False)
         self.output_dir = cfg.get('output_dir', None)
         # import pdb; pdb.set_trace()
         if self.output_dir is None:
-            start_index = cfg_path.find('configs'+os.path.sep) + len('configs'+os.path.sep)
-            self.output_dir = os.path.join('output', cfg_path[start_index:].replace('.yml', ''))
-    
+            if cfg_path.endswith('config.yaml') and 'outputs' in cfg_path:
+                self.output_dir = os.path.dirname(cfg_path)
+            else:
+                if run_type in ['train']:
+                    start_index = cfg_path.find('configs'+os.path.sep) + len('configs'+os.path.sep)
+                    self.output_dir = os.path.join('output', cfg_path[start_index:].replace('.yml', '_g{}'.format(dist.get_world_size())).replace('.yaml', '_g{}'.format(dist.get_world_size())))
+                elif run_type in ['eval', 'track']:
+                    ckpt_path = self.resume if self.resume else self.tuning
+                    self.output_dir = os.path.dirname(ckpt_path)
+                else:
+                    raise RuntimeError
+
+        if auto_resume:
+            ckpt_path = os.path.join(self.output_dir, 'checkpoint.pth')
+            if os.path.exists(ckpt_path):
+                self.resume = ckpt_path
+
         self.use_ema = cfg.get('use_ema', False)
         self.use_amp = cfg.get('use_amp', False)
         self.autocast = cfg.get('autocast', dict())
@@ -43,10 +59,13 @@ class YAMLConfig(BaseConfig):
         self.clip_max_norm = cfg.get('clip_max_norm', 0.)
         
         # save configs
-        if dist.is_main_process() and save:
+        if dist.is_main_process() and run_type in ['train']:
             cfg_save_path = os.path.join(self.output_dir, 'config.yml')
             os.makedirs(os.path.dirname(cfg_save_path), exist_ok=True)
             save_config(cfg, save_path=cfg_save_path, verbose=True)
+
+            arg_save_path = os.path.join(self.output_dir, 'args.txt')
+            write_args(cfg, save_path=arg_save_path)
 
             # save args
             

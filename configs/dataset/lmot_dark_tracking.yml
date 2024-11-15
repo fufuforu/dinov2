@@ -1,0 +1,170 @@
+task: mot
+
+num_classes: 7 # 6 + 1, 1 is for background
+remap_category: False
+
+train_dataloader: 
+  type: DataLoader
+  dataset: 
+    type: LMOTTracking
+    img_folder: ./dataset/LMOT/images
+    ann_file: ./dataset/LMOT/annotations/train_img_dark.json
+    visibility_thr: 0.5
+    num_frames: [2, 3, 4, 5]
+    num_frame_steps: [5, 9, 15]
+    frame_interval: 10
+    interval_mode: random_interval
+    transforms:
+      type: Compose
+      ops: ~
+  shuffle: True
+  batch_size: 2
+  num_workers: 4
+  drop_last: True 
+
+# dataset for evaluation with the traiing manner
+eval_train_dataloader: 
+  type: DataLoader
+  dataset: 
+    type: LMOTTracking
+    img_folder: ./dataset/LMOT/images
+    ann_file: ./dataset/LMOT/annotations/train_img_dark.json
+    visibility_thr: -1
+    frame_interval: 1
+    interval_mode: fixed_interval
+    clip_box: False 
+    transforms:
+      type: Compose
+      ops: ~
+  shuffle: False
+  batch_size: 2
+  num_workers: 4
+  drop_last: False 
+
+
+val_dataloader:
+  type: DataLoader
+  dataset: 
+    type: LMOTTracking
+    img_folder: ./dataset/LMOT/images
+    ann_file: ./dataset/LMOT/annotations/val_img_dark.json
+    visibility_thr: -1
+    frame_interval: 1
+    interval_mode: fixed_interval
+    clip_box: False 
+    transforms:
+      type: Compose
+      ops: ~ 
+
+  shuffle: False
+  batch_size: 2
+  num_workers: 4
+  drop_last: False
+
+test_dataloader:
+  type: DataLoader
+  dataset: 
+    type: LMOTTracking
+    img_folder: ./dataset/LMOT/images
+    ann_file: ./dataset/LMOT/annotations/test_img_dark.json
+    visibility_thr: -1
+    frame_interval: 1
+    interval_mode: fixed_interval
+    clip_box: False 
+    transforms:
+      type: Compose
+      ops: ~ 
+
+  shuffle: False
+  batch_size: 2
+  num_workers: 4
+  drop_last: False
+
+real_dataloader:
+  type: DataLoader
+  dataset: 
+    type: LMOTTracking
+    img_folder: ./dataset/LMOT/images
+    ann_file: ./dataset/LMOT/annotations/real_img_real_ns_isp.json
+    visibility_thr: -1
+    frame_interval: 1
+    interval_mode: fixed_interval
+    clip_box: False 
+    transforms:
+      type: Compose
+      ops: ~ 
+
+  shuffle: False
+  batch_size: 2
+  num_workers: 4
+  drop_last: False
+
+
+# dataset for tracking online
+eval_train_dataset: 
+  type: LMOTEvalTracking
+  img_folder: ./dataset/LMOT/images
+  ann_file: ./dataset/LMOT/annotations/train_img_dark.json
+  visibility_thr: -1
+  clip_box: False 
+  transforms:
+    type: Compose
+    ops: 
+      # - {type: Resize, size: 639, max_size: 640}
+      # - {type: PadToSize, spatial_size: 640}
+      - {type: Resize, size: [640, 640], antialias: False}
+      # - {type: ToImageTensor}
+      # - {type: ConvertDtype}
+      - {type: Normalize, mean: [0.0, 0.0, 0.0], std: [255.0, 255.0, 255.0]}
+
+      
+val_dataset: 
+  type: LMOTEvalTracking
+  img_folder: ./dataset/LMOT/images
+  ann_file: ./dataset/LMOT/annotations/val_img_dark.json
+  visibility_thr: -1
+  clip_box: False 
+  transforms:
+    type: Compose
+    ops: 
+      # - {type: Resize, size: 639, max_size: 640}
+      # - {type: PadToSize, spatial_size: 640}
+      - {type: Resize, size: [640, 640], antialias: False}
+      # - {type: ToImageTensor}
+      # - {type: ConvertDtype}
+      - {type: Normalize, mean: [0.0, 0.0, 0.0], std: [255.0, 255.0, 255.0]}
+
+
+test_dataset: 
+  type: LMOTEvalTracking
+  img_folder: ./dataset/LMOT/images
+  ann_file: ./dataset/LMOT/annotations/test_img_dark.json
+  visibility_thr: -1
+  clip_box: False 
+  transforms:
+    type: Compose
+    ops: 
+      # - {type: Resize, size: 639, max_size: 640}
+      # - {type: PadToSize, spatial_size: 640}
+      - {type: Resize, size: [640, 640], antialias: False}
+      # - {type: ToImageTensor}
+      # - {type: ConvertDtype}
+      - {type: Normalize, mean: [0.0, 0.0, 0.0], std: [255.0, 255.0, 255.0]}
+
+
+real_dataset: 
+  type: LMOTEvalTracking
+  img_folder: ./dataset/LMOT/images
+  ann_file: ./dataset/LMOT/annotations/real_img_dark.json
+  visibility_thr: -1
+  clip_box: False 
+  transforms:
+    type: Compose
+    ops: 
+      # - {type: Resize, size: 639, max_size: 640}
+      # - {type: PadToSize, spatial_size: 640}
+      - {type: Resize, size: [640, 640], antialias: False}
+      # - {type: ToImageTensor}
+      # - {type: ConvertDtype}
+      - {type: Normalize, mean: [0.0, 0.0, 0.0], std: [255.0, 255.0, 255.0]}
+

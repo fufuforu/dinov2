@@ -1,0 +1,37 @@
+__include__: [
+  '../dataset/lmot_dark_detection.yml',
+  '../runtime.yml',
+  './include/dataloader.yml',
+  './include/optimizer.yml',
+  './include/rtdetr_r50vd.yml',
+]
+
+
+
+HybridEncoder:
+  attn: 'QuantMultiheadAttention'
+
+
+
+RTDETRTransformer:
+  attn: 'QuantMultiheadAttention'
+
+epoches: 20
+# output_dir: ./output/rtdetr_r50vd_lmot_light_isp_det
+
+optimizer:
+  type: AdamW
+  params: 
+    - 
+      params: 'backbone'
+      lr: 0.0001
+    - 
+      params: '^(?=.*encoder(?=.*bias|.*norm.*weight)).*$'
+      weight_decay: 0.
+    -
+      params: '^(?=.*decoder(?=.*bias|.*norm.*weight)).*$'
+      weight_decay: 0.
+
+  lr: 0.0001
+  betas: [0.9, 0.999]
+  weight_decay: 0.0001

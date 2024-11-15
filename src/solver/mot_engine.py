@@ -34,7 +34,7 @@ def train_one_epoch(model: torch.nn.Module, criterion: torch.nn.Module,
 
     for samples, targets in metric_logger.log_every(data_loader, print_freq, header):
         samples = [s.to(device) for s in samples] # list of tensor
-        targets = [t.to(device) for t in targets] # list of Instances
+        targets = [t.to(device) for t in targets] # list of BatchInstances
         # import pdb; pdb.set_trace()
 
         if scaler is not None:
@@ -111,15 +111,18 @@ def evaluate_det(model: torch.nn.Module, criterion: torch.nn.Module, postprocess
 
     for samples, targets in metric_logger.log_every(data_loader, 10, header):
         samples = [s.to(device) for s in samples] # list
-        targets = [t.to(device) for t in targets]
+        targets = [t.to(device) for t in targets] # list of BatchInstances
 
         outputs = model(samples, targets)
 
         # import pdb; pdb.set_trace()
-        orig_target_sizes = torch.stack([torch.tensor(t.orig_image_size).to(device) for t in targets], dim=0)        
+        orig_target_sizes = [torch.tensor(t.orig_image_size).to(device) for t in targets]       
         results = postprocessors(outputs, orig_target_sizes)
 
-        res = {target.image_id: output for target, output in zip(targets, results)}
+        res = {}
+        for fidx in range(len(targets)):
+            for bidx in range(len(targets[fidx].image_id)):
+                res[targets[fidx].image_id[bidx]] = results[fidx][bidx] 
         if coco_evaluator is not None:
             coco_evaluator.update(res)
 

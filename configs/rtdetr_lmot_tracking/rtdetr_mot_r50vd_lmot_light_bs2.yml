@@ -1,0 +1,54 @@
+__include__: [
+  '../dataset/lmot_light_tracking.yml',
+  '../runtime.yml',
+  './include/dataloader.yml',
+  './include/optimizer.yml',
+  './include/rtdetr_mot_r50vd.yml',
+  './include/tracker.yml',
+]
+
+
+
+HybridEncoder:
+  attn: 'QuantMultiheadAttention'
+
+
+
+RTDETRTransformerForMOT:
+  attn: 'QuantMultiheadAttention'
+
+
+train_dataloader: 
+  batch_size: 2
+  num_workers: 4
+eval_train_dataloader: 
+  batch_size: 2
+  num_workers: 4
+val_dataloader: 
+  batch_size: 2
+  num_workers: 4
+test_dataloader: 
+  batch_size: 2
+  num_workers: 4
+real_dataloader:
+  batch_size: 2
+  num_workers: 4
+
+
+epoches: 20
+# output_dir: ./output/rtdetr_r50vd_lmot_light_isp_det
+
+
+# online tracking config
+RuntimeTrackerBase:
+  score_thresh: 0.5
+  filter_score_thresh: 0.4
+  miss_tolerance: 5
+
+tracker:
+  mot_or_det: mot_det
+  # remap_category: false
+  score_thresh: 0.5
+  area_threshold: 100 
+  visualize: null 
+  clip_box: false

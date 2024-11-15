@@ -89,6 +89,7 @@ def create(type_or_name, **kwargs):
         _cfg.update(cfg) # update global cls default args 
         _cfg.update(kwargs) # TODO
         name = _cfg.pop('type')
+        # name = _cfg['type']
         return create(name)
 
     cls = getattr(cfg['_pymodule'], name)
@@ -161,16 +162,24 @@ def load_config(file_path, cfg=dict()):
 
     if INCLUDE_KEY in file_cfg:
         base_yamls = list(file_cfg[INCLUDE_KEY])
+        base_yamls_with_full_path = []
         for base_yaml in base_yamls:
             if base_yaml.startswith('~'):
                 base_yaml = os.path.expanduser(base_yaml)
-
-            if not base_yaml.startswith('/'):
+            elif base_yaml.startswith('configs/'):
+                pass 
+            elif base_yaml.startswith('.'): # relative path with respect to the file itself
                 base_yaml = os.path.join(os.path.dirname(file_path), base_yaml)
+            else:
+                raise RuntimeError('Unknown type of config file name {}'.format(base_yaml))
 
+            # update the file cfg to the 
+            base_yamls_with_full_path.append(base_yaml)
             with open(base_yaml) as f:
                 base_cfg = load_config(base_yaml, cfg)
                 merge_config(base_cfg, cfg)
+
+        file_cfg[INCLUDE_KEY] = base_yamls_with_full_path
 
     return merge_config(file_cfg, cfg)
 
@@ -214,23 +223,26 @@ def save_config(cfg:dict, save_path, verbose=False):
         print('save config to {}'.format(save_path))
 
 
-def write_args(args, path):
-    args_dict = dict((name, getattr(args, name)) for name in dir(args)if not name.startswith('_'))
-    with open(path, 'a') as args_file:
+def write_args(args, save_path):
+    # args_dict = dict((name, getattr(args, name)) for name in dir(args)if not name.startswith('_'))
+    import torch
+    import sys
+    with open(save_path, 'a') as args_file:
         args_file.write('==> torch version: {}\n'.format(torch.__version__))
         args_file.write('==> cudnn version: {}\n'.format(torch.backends.cudnn.version()))
         args_file.write('==> Cmd:\n')
         args_file.write(str(sys.argv))
         args_file.write('\n==> args:\n')
-        for k, v in sorted(args_dict.items()):
+        for k, v in sorted(args.items()):
             args_file.write('  %s: %s\n' % (str(k), str(v)))
         args_file.close()
+    print('save args to {}'.format(save_path))
 
 
 def merge_opts_to_config(config, opts):
     def modify_dict(c, nl, v):
         if len(nl) == 1:
-            if nl[0] in c:
+            if nl[0] in c and c[nl[0]] is not None:
                 v = type(c[nl[0]])(v)
             c[nl[0]] = v
         else:

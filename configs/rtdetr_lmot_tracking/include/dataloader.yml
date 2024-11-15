@@ -5,11 +5,11 @@ train_dataloader:
     transforms:
       ops:
         # - {wrap_func: mot_transform_wrap, type: RandomPhotometricDistort, p: 0.5}
-        - {wrap_func: mot_transform_wrap, type: RandomZoomOut, fill: 0} # support batch
-        - {wrap_func: mot_transform_wrap, type: RandomIoUCrop, p: 0.8} # support batch
+        - {wrap_func: mot_transform_wrap, type: RandomZoomOut, fill: 0},
+        - {wrap_func: mot_transform_wrap, type: RandomIoUCrop, p: 0.8}
         - {wrap_func: mot_transform_wrap, type: SanitizeBoundingBox, min_size: 1, labels_getter: labels_getter_func_for_mot_in_SanitizeBoundingBox}
-        - {wrap_func: mot_transform_wrap, type: RandomHorizontalFlip} # support batch
-        - {wrap_func: mot_transform_wrap, type: Resize, size: [640, 640], antialias: True} # support batch
+        - {wrap_func: mot_transform_wrap, type: RandomHorizontalFlip} 
+        - {wrap_func: mot_transform_wrap, type: Resize, size: [640, 640], antialias: False}
         # - {wrap_func: mot_transform_wrap, type: Resize, size: 639, max_size: 640}
         # - {wrap_func: mot_transform_wrap, type: PadToSize, spatial_size: 640}
         # - {wrap_func: mot_transform_wrap, type: ToImageTensor}
@@ -18,8 +18,8 @@ train_dataloader:
         - {wrap_func: mot_transform_wrap, type: SanitizeBoundingBox, min_size: 1, labels_getter: labels_getter_func_for_mot_in_SanitizeBoundingBox}
         - {wrap_func: mot_transform_wrap, type: ConvertBox, out_fmt: 'cxcywh', normalize: True}
   shuffle: True
-  batch_size: 1
-  num_workers: 2
+  batch_size: 2
+  num_workers: 4
   collate_fn: mot_collate_fn
 
 
@@ -30,13 +30,13 @@ eval_train_dataloader:
       ops: 
         # - {wrap_func: mot_transform_wrap, type: Resize, size: 639, max_size: 640}
         # - {wrap_func: mot_transform_wrap, type: PadToSize, spatial_size: 640}
-        - {wrap_func: mot_transform_wrap, type: Resize, size: [640, 640], antialias: True}
+        - {wrap_func: mot_transform_wrap, type: Resize, size: [640, 640], antialias: False}
         # - {wrap_func: mot_transform_wrap, type: ToImageTensor}
         # - {wrap_func: mot_transform_wrap, type: ConvertDtype}
         - {wrap_func: mot_transform_wrap, type: Normalize, mean: [0.0, 0.0, 0.0], std: [255.0, 255.0, 255.0]}
   shuffle: False
-  batch_size: 1
-  num_workers: 2
+  batch_size: 2
+  num_workers: 4
   collate_fn: mot_collate_fn
 
 
@@ -47,13 +47,13 @@ val_dataloader:
       ops: 
         # - {wrap_func: mot_transform_wrap, type: Resize, size: 639, max_size: 640}
         # - {wrap_func: mot_transform_wrap, type: PadToSize, spatial_size: 640}
-        - {wrap_func: mot_transform_wrap, type: Resize, size: [640, 640], antialias: True}
+        - {wrap_func: mot_transform_wrap, type: Resize, size: [640, 640], antialias: False}
         # - {wrap_func: mot_transform_wrap, type: ToImageTensor}
         # - {wrap_func: mot_transform_wrap, type: ConvertDtype}
         - {wrap_func: mot_transform_wrap, type: Normalize, mean: [0.0, 0.0, 0.0], std: [255.0, 255.0, 255.0]}
   shuffle: False
-  batch_size: 1
-  num_workers: 2
+  batch_size: 2
+  num_workers: 4
   collate_fn: mot_collate_fn
 
 
@@ -64,13 +64,13 @@ test_dataloader:
       ops: 
         # - {wrap_func: mot_transform_wrap, type: Resize, size: 639, max_size: 640}
         # - {wrap_func: mot_transform_wrap, type: PadToSize, spatial_size: 640}
-        - {wrap_func: mot_transform_wrap, type: Resize, size: [640, 640], antialias: True}
+        - {wrap_func: mot_transform_wrap, type: Resize, size: [640, 640], antialias: False}
         # - {wrap_func: mot_transform_wrap, type: ToImageTensor}
         # - {wrap_func: mot_transform_wrap, type: ConvertDtype}
         - {wrap_func: mot_transform_wrap, type: Normalize, mean: [0.0, 0.0, 0.0], std: [255.0, 255.0, 255.0]}
   shuffle: False
-  batch_size: 1
-  num_workers: 2
+  batch_size: 2
+  num_workers: 4
   collate_fn: mot_collate_fn
 
 real_dataloader:
@@ -80,11 +80,11 @@ real_dataloader:
       ops: 
         # - {wrap_func: mot_transform_wrap, type: Resize, size: 639, max_size: 640}
         # - {wrap_func: mot_transform_wrap, type: PadToSize, spatial_size: 640}
-        - {wrap_func: mot_transform_wrap, type: Resize, size: [640, 640], antialias: True}
+        - {wrap_func: mot_transform_wrap, type: Resize, size: [640, 640], antialias: False}
         # - {type: ToImageTensor}
         # - {type: ConvertDtype}
         - {wrap_func: mot_transform_wrap, type: Normalize, mean: [0.0, 0.0, 0.0], std: [255.0, 255.0, 255.0]}
   shuffle: False
-  batch_size: 1
-  num_workers: 2
+  batch_size: 2
+  num_workers: 4
   collate_fn: mot_collate_fn

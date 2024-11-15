@@ -10,7 +10,7 @@ import torchvision
 from torchvision import datapoints
 import torchvision.transforms.v2 as T
 import torchvision.transforms.v2.functional as F
-from torchvision.transforms.v2.utils import query_bounding_box
+from torchvision.transforms.v2.utils import query_bounding_box, query_spatial_size
 
 from PIL import Image 
 from typing import Any, Dict, List, Optional, Callable, Union, cast
@@ -22,42 +22,52 @@ __all__ = ['Compose', ]
 
 
 RandomPhotometricDistort = register(T.RandomPhotometricDistort)
-RandomZoomOut = register(T.RandomZoomOut)
+# RandomZoomOut = register(T.RandomZoomOut)
 # RandomIoUCrop = register(T.RandomIoUCrop)
-RandomHorizontalFlip = register(T.RandomHorizontalFlip)
+# RandomHorizontalFlip = register(T.RandomHorizontalFlip)
 Resize = register(T.Resize)
 ToImageTensor = register(T.ToImageTensor)
 ConvertDtype = register(T.ConvertDtype)
 # SanitizeBoundingBox = register(T.SanitizeBoundingBox)
 # RandomCrop = register(T.RandomCrop)
 Normalize = register(T.Normalize)
-
-
+# RandomPerspective = register(T.RandomPerspective) 
+RandomAffine = register(T.RandomAffine)
+# RandomChoice = register(T.RandomChoice)
 
 @register
 class Compose(T.Compose):
     def __init__(self, ops) -> None:
-        transforms = []
-        if ops is not None:
-            for op in ops:
-                if isinstance(op, dict):
-                    name = op.pop('type')
-                    transform_class = getattr(GLOBAL_CONFIG[name]['_pymodule'], name)
-                    if 'wrap_func' in op:
-                        wrap_func_name = op.pop('wrap_func')
-                        wrap_func = GLOBAL_CONFIG[wrap_func_name]
-                        transform = wrap_func(transform_class, **op)
+        def make_transform_list(ops_):
+            transforms = []
+            if ops_ is not None:
+                for op in ops_:
+                    op_ = copy.deepcopy(op)
+                    if isinstance(op_, dict):
+                        name = op_.pop('type')
+                        if name == 'RandomChoice':
+                            p = op_.get('p', None)
+                            transform = T.RandomChoice(make_transform_list(op_['ops']), p=p)
+                        else:
+                            transform_class = getattr(GLOBAL_CONFIG[name]['_pymodule'], name)
+                            if 'wrap_func' in op_:
+                                wrap_func_name = op_.pop('wrap_func')
+                                wrap_func = GLOBAL_CONFIG[wrap_func_name]
+                                transform = wrap_func(transform_class, **op_)
+                            else:
+                                transform = transform_class(**op_)
+                        transforms.append(transform)
+                        # op_['type'] = name
+                    elif isinstance(op_, nn.Module):
+                        transforms.append(op_)
                     else:
-                        transform = transform_class(**op)
-                    transforms.append(transform)
-                    # op['type'] = name
-                elif isinstance(op, nn.Module):
-                    transforms.append(op)
+                        raise ValueError('')
+            else:
+                transforms =[EmptyTransform(), ]
+            
+            return transforms
 
-                else:
-                    raise ValueError('')
-        else:
-            transforms =[EmptyTransform(), ]
+        transforms = make_transform_list(ops)
  
         super().__init__(transforms=transforms)
 
@@ -121,6 +131,143 @@ class PadToSize(T.Pad):
 #         return super().forward(*inputs)
 
 
+# #########################################################################
+# The following transforms are written for MOT
+# #########################################################################
+
+@register
+class RandomZoomOut(T.RandomZoomOut):
+
+    def _get_params(self, flat_inputs: List[Any]) -> Dict[str, Any]:
+        orig_h, orig_w = query_spatial_size(flat_inputs)
+
+        r = self.side_range[0] + torch.rand(1) * (self.side_range[1] - self.side_range[0])
+        canvas_width = int(orig_w * r)
+        canvas_height = int(orig_h * r)
+
+        r = torch.rand(2)
+        left = int((canvas_width - orig_w) * r[0])
+        top = int((canvas_height - orig_h) * r[1])
+        right = canvas_width - (left + orig_w)
+        bottom = canvas_height - (top + orig_h)
+        padding = [left, top, right, bottom]
+
+        params = {
+            'padding': padding,
+            'needs_pad': torch.rand(1) >= self.p
+        }
+
+        return params
+
+    def _transform(self, inpt: Any, params: Dict[str, Any]) -> Any:
+
+        if not params['needs_pad']:
+            return inpt
+        else:
+            params_ = copy.deepcopy(params)
+            params_.pop('needs_pad')
+            return super()._transform(inpt, params_)
+
+    def forward(self, *inputs: Any) -> Any:
+        # We need to almost duplicate `Transform.forward()` here since we always want to check the inputs, but return
+        # early afterwards in case the random check triggers. The same result could be achieved by calling
+        # `super().forward()` after the random check, but that would call `self._check_inputs` twice.
+
+        inputs = inputs if len(inputs) > 1 else inputs[0]
+        flat_inputs, spec = tree_flatten(inputs)
+
+        self._check_inputs(flat_inputs)
+
+        needs_transform_list = self._needs_transform_list(flat_inputs)
+        params = self._get_params(
+            [inpt for (inpt, needs_transform) in zip(flat_inputs, needs_transform_list) if needs_transform]
+        )
+
+        flat_outputs = [
+            self._transform(inpt, params) if needs_transform else inpt
+            for (inpt, needs_transform) in zip(flat_inputs, needs_transform_list)
+        ]
+
+        return tree_unflatten(flat_outputs, spec)
+
+
+@register
+class RandomHorizontalFlip(T.RandomHorizontalFlip):
+    
+    def _get_params(self, flat_inputs: List[Any]) -> Dict[str, Any]:
+        params = {}
+        params['needs_flip'] = torch.rand(1) >= self.p
+        return params
+    
+    def _transform(self, inpt: Any, params: Dict[str, Any]) -> Any:
+
+        if not params['needs_flip']:
+            return inpt
+        else:
+            return super()._transform(inpt, params)
+
+    def forward(self, *inputs: Any) -> Any:
+        # We need to almost duplicate `Transform.forward()` here since we always want to check the inputs, but return
+        # early afterwards in case the random check triggers. The same result could be achieved by calling
+        # `super().forward()` after the random check, but that would call `self._check_inputs` twice.
+
+        inputs = inputs if len(inputs) > 1 else inputs[0]
+        flat_inputs, spec = tree_flatten(inputs)
+
+        self._check_inputs(flat_inputs)
+
+        needs_transform_list = self._needs_transform_list(flat_inputs)
+        params = self._get_params(
+            [inpt for (inpt, needs_transform) in zip(flat_inputs, needs_transform_list) if needs_transform]
+        )
+
+        flat_outputs = [
+            self._transform(inpt, params) if needs_transform else inpt
+            for (inpt, needs_transform) in zip(flat_inputs, needs_transform_list)
+        ]
+
+        return tree_unflatten(flat_outputs, spec)
+
+
+
+@register
+class RandomPerspective(T.RandomPerspective):
+    def _get_params(self, flat_inputs: List[Any]) -> Dict[str, Any]:
+        params = super()._get_params(flat_inputs)
+        params['needs_perspective'] = torch.rand(1) >= self.p
+        return params
+    
+    def _transform(self, inpt: Any, params: Dict[str, Any]) -> Any:
+
+        if not params['needs_perspective']:
+            return inpt
+        else:
+            params_ = copy.deepcopy(params)
+            params_.pop('needs_perspective')
+            return super()._transform(inpt, params_)
+
+    def forward(self, *inputs: Any) -> Any:
+        # We need to almost duplicate `Transform.forward()` here since we always want to check the inputs, but return
+        # early afterwards in case the random check triggers. The same result could be achieved by calling
+        # `super().forward()` after the random check, but that would call `self._check_inputs` twice.
+
+        inputs = inputs if len(inputs) > 1 else inputs[0]
+        flat_inputs, spec = tree_flatten(inputs)
+
+        self._check_inputs(flat_inputs)
+
+        needs_transform_list = self._needs_transform_list(flat_inputs)
+        params = self._get_params(
+            [inpt for (inpt, needs_transform) in zip(flat_inputs, needs_transform_list) if needs_transform]
+        )
+
+        flat_outputs = [
+            self._transform(inpt, params) if needs_transform else inpt
+            for (inpt, needs_transform) in zip(flat_inputs, needs_transform_list)
+        ]
+
+        return tree_unflatten(flat_outputs, spec)
+
 
 @register
 class RandomIoUCrop(T.RandomIoUCrop):
@@ -143,8 +290,8 @@ class RandomIoUCrop(T.RandomIoUCrop):
 
         if not params['needs_crop']:
             return inpt
-        
-        return super()._transform(inpt, params)
+        else:
+            return super()._transform(inpt, params)
 
 
 @register
@@ -279,7 +426,7 @@ def mot_transform_wrap(transform_class, **args):
     class MOTTransformWrapper(transform_class):
         def __init__(self, **args):
             super().__init__(**args)
-            self.__class__.__name__ = transform_class.__name__ #TODO: '{}_{}'.format('MOTTransformWrapper', transform_class.__name__)
+            self.__class__.__name__ = 'MOT_{}'.format(transform_class.__name__) #TODO: '{}_{}'.format('MOTTransformWrapper', transform_class.__name__)
             self.parent_class_name = transform_class.__name__
             self._params_ = None
         
@@ -309,6 +456,7 @@ def mot_transform_wrap(transform_class, **args):
             return params
         
         def forward(self, *inputs: Any) -> Any:
+
             # if self.parent_class_name in ['SanitizeBoundingBox']:
                 # import pdb; pdb.set_trace()
             self._params_ = None

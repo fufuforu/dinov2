@@ -36,7 +36,9 @@ class LMOTDetection(torchvision.datasets.CocoDetection):
         self.return_masks = return_masks
         self.remap_category = remap_category
         self.image_n_bit = image_n_bit
-        self.raw_image_reader = RawImageReader(image_n_bit)
+        self.raw_image_reader = RawImageReader(
+                                    is_dark='dark' in os.path.basename(ann_file) or 'real' in os.path.basename(ann_file),
+                                    n_bit=image_n_bit)
     
 
     def _load_image(self, id: int):

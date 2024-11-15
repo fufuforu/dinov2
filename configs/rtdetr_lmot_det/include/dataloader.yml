@@ -9,7 +9,7 @@ train_dataloader:
         - {type: RandomIoUCrop, p: 0.8} # support batch
         - {type: SanitizeBoundingBox, min_size: 1}
         - {type: RandomHorizontalFlip} # support batch
-        - {type: Resize, size: [640, 640], antialias: True} # support batch
+        - {type: Resize, size: [640, 640], antialias: False} # support batch
         # - {type: Resize, size: 639, max_size: 640}
         # - {type: PadToSize, spatial_size: 640}
         # - {type: ToImageTensor}
@@ -29,7 +29,7 @@ eval_train_dataloader:
       ops: 
         # - {type: Resize, size: 639, max_size: 640}
         # - {type: PadToSize, spatial_size: 640}
-        - {type: Resize, size: [640, 640], antialias: True}
+        - {type: Resize, size: [640, 640], antialias: False}
         # - {type: ToImageTensor}
         # - {type: ConvertDtype}
         - {type: Normalize, mean: [0.0, 0.0, 0.0], std: [255.0, 255.0, 255.0]}
@@ -45,13 +45,13 @@ val_dataloader:
       ops: 
         # - {type: Resize, size: 639, max_size: 640}
         # - {type: PadToSize, spatial_size: 640}
-        - {type: Resize, size: [640, 640], antialias: True}
+        - {type: Resize, size: [640, 640], antialias: False}
         # - {type: ToImageTensor}
         # - {type: ConvertDtype}
         - {type: Normalize, mean: [0.0, 0.0, 0.0], std: [255.0, 255.0, 255.0]}
   shuffle: False
   batch_size: 8
-  num_workers: 0 #TODO: 4
+  num_workers: 4
   collate_fn: default_collate_fn
 
 
@@ -61,7 +61,7 @@ test_dataloader:
       ops: 
         # - {type: Resize, size: 639, max_size: 640}
         # - {type: PadToSize, spatial_size: 640}
-        - {type: Resize, size: [640, 640], antialias: True}
+        - {type: Resize, size: [640, 640], antialias: False}
         # - {type: ToImageTensor}
         # - {type: ConvertDtype}
         - {type: Normalize, mean: [0.0, 0.0, 0.0], std: [255.0, 255.0, 255.0]}
@@ -76,7 +76,7 @@ real_dataloader:
       ops: 
         # - {type: Resize, size: 639, max_size: 640}
         # - {type: PadToSize, spatial_size: 640}
-        - {type: Resize, size: [640, 640], antialias: True}
+        - {type: Resize, size: [640, 640], antialias: False}
         # - {type: ToImageTensor}
         # - {type: ConvertDtype}
         - {type: Normalize, mean: [0.0, 0.0, 0.0], std: [255.0, 255.0, 255.0]}

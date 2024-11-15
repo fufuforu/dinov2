@@ -137,12 +137,12 @@ def unzip_objs(objs):
 
 
 class Evaluator(object):
-    def __init__(self, data_root, seq_name, data_type='mot', class_specific=False):
+    def __init__(self, data_root, seq_name, data_type='mot', category2name=None, category_specific=False):
 
         self.data_root = data_root
         self.seq_name = seq_name
         self.data_type = data_type
-        self.class_specific = class_specific
+        self.category_specific = category_specific
 
         self.load_annotations()
         self.reset_accumulator()
@@ -193,7 +193,7 @@ class Evaluator(object):
         else:
             iou_distance = np.empty((len(gt_tlwhs), len(trk_tlwhs)))
 
-        if self.class_specific:
+        if self.category_specific:
             mask = np.copy(gt_labels)[:, None] == trk_labels[None, :]
             iou_distance = np.where(mask, iou_distance, np.nan) 
 
@@ -235,8 +235,22 @@ class Evaluator(object):
         return summary
 
     @staticmethod
-    def save_summary(summary, filename):
+    def save_summary(summary, filename,formatters=None, namemap=None):
         import pandas as pd
+
+        if namemap is not None:
+            summary = summary.rename(columns=namemap)
+            if formatters is not None:
+                formatters = {namemap.get(c, c): f for c, f in formatters.items()}
+
+        if formatters is not None:
+            for metric_name in summary.columns.to_list():
+                if metric_name in formatters:
+                    summary[metric_name] = summary[metric_name].apply(formatters[metric_name])
+
         writer = pd.ExcelWriter(filename)
-        summary.to_excel(writer)
-        writer.save()
+        summary.to_excel(writer) 
+        try:
+            writer._save()
+        except:
+            writer.save()

@@ -1,0 +1,37 @@
+__include__: [
+  '../dataset/lmot_dark_ns_isp_tracking.yml',
+  '../runtime.yml',
+  './include/dataloader.yml',
+  './include/optimizer.yml',
+  './include/rtdetr_mot_r50vd.yml',
+  './include/tracker.yml',
+]
+
+
+
+HybridEncoder:
+  attn: 'QuantMultiheadAttention'
+
+
+
+RTDETRTransformerForMOT:
+  attn: 'QuantMultiheadAttention'
+
+
+epoches: 20
+# output_dir: ./output/rtdetr_r50vd_lmot_light_isp_det
+
+
+# online tracking config
+RuntimeTrackerBase:
+  score_thresh: 0.5
+  filter_score_thresh: 0.4
+  miss_tolerance: 5
+
+tracker:
+  mot_or_det: mot_det
+  # remap_category: false
+  score_thresh: 0.5
+  area_threshold: 100 
+  visualize: null 
+  clip_box: false

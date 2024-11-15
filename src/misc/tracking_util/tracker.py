@@ -33,7 +33,7 @@ from tqdm import tqdm
 from typing import List
 from src.data.coco.coco_eval import CocoEvaluator
 from src.data.coco.coco_utils import get_coco_api_from_dataset
-from src.misc.instances import Instances
+from src.misc.instances import Instances, BatchInstances
 from src.data.category_map import LABEL2CATEGORY_DICT
 from src.core import register
 from src.misc.tracking_util.evaluation import Evaluator
@@ -94,7 +94,7 @@ def draw_bboxes(ori_img, bbox, identities=None, offset=(0, 0), cvt_color=False):
         ori_img = cv2.cvtColor(np.asarray(ori_img), cv2.COLOR_RGB2BGR)
     img = ori_img
     for i, box in enumerate(bbox):
-        x1, y1, x2, y2 = [int(i) for i in box[:4]]
+        x1, y1, x2, y2 = tuple([int(i) for i in box[:4]])
         x1 += offset[0]
         x2 += offset[0]
         y1 += offset[1]
@@ -186,24 +186,32 @@ class MOTRTracker(object):
 
         
 
-    def filter_dt_by_score(self, track_instances_out: Instances) -> Instances:
+    def filter_dt_by_score(self, track_instances_out: BatchInstances) -> BatchInstances:
         keep = track_instances_out.scores > self.score_thresh
-        return track_instances_out[keep]
+        track_instances_out.valid_mask = track_instances_out.valid_mask * keep
+        return track_instances_out
 
-    def filter_dt_by_area(self, track_instances_out: Instances) -> Instances:
-        wh = track_instances_out.boxes[:, 2:4] - track_instances_out.boxes[:, 0:2]
-        areas = wh[:, 0] * wh[:, 1]
+    def filter_dt_by_area(self, track_instances_out: BatchInstances) -> BatchInstances:
+        wh = track_instances_out.boxes[:, :, 2:4] - track_instances_out.boxes[:, :, 0:2]
+        areas = wh[:, :, 0] * wh[:, :, 1]
         keep = areas > self.area_threshold
-        return track_instances_out[keep]
+        track_instances_out.valid_mask = track_instances_out.valid_mask * keep
+        return track_instances_out
     
-    def filter_dt_by_object_id(self, track_instances_out: Instances) -> Instances:
+    def filter_dt_by_object_id(self, track_instances_out: BatchInstances) -> BatchInstances:
         keep = track_instances_out.obj_ids >= 0
-        return track_instances_out[keep]
+        track_instances_out.valid_mask = track_instances_out.valid_mask * keep
+        return track_instances_out
 
 
-    def keep_top_k(self, track_instances_out: Instances, topk: int = 100) -> Instances:
-        keep = track_instances_out.scores.topk(100)[1]
-        return track_instances_out[keep]
+    def keep_top_k(self, track_instances_out: BatchInstances, topk: int = 100) -> BatchInstances:
+        indxes = track_instances_out.scores.topk(topk, dim=-1)[1] # b, k
+        bidx = torch.arange(indxes.shape[0]).reshape(-1, 1).tile(1,topk).to(indxes)
+        indxes = torch.stack((bidx, indxes), dim=-1).reshape(-1, 2) # b*k, 2
+        valid_mask = torch.zeros_like(track_instances_out.valid_mask)
+        valid_mask[indxes[:,0], indxes[:, 1]] = True
+        track_instances_out.valid_mask = track_instances_out.valid_mask * valid_mask
+        return track_instances_out
 
     def write_tracking_results(self, txt_path, dataset_name='mot17'):
         dataset_name = dataset_name.lower()
@@ -232,34 +240,38 @@ class MOTRTracker(object):
                         line = save_format.format(frame=int(frame_id), id=int(track_id), x1=x1, y1=y1, w=w, h=h, label=int(label))
                     f.write(line)
     
-    def eval_frame_detection_results(self, det_instances, image_id):
+    def eval_frame_detection_results(self, det_instances: BatchInstances, image_id):
         if 'det' in self.mot_or_det:
+            valid_mask = det_instances.valid_mask[0,:]
             det_res = {
                 image_id: {
-                    'boxes': det_instances.boxes, # x1, y1, x2, y2
-                    'labels': det_instances.labels,
-                    'scores': det_instances.scores,
+                    'boxes': det_instances.boxes[0][valid_mask], # x1, y1, x2, y2
+                    'labels': det_instances.labels[0][valid_mask],
+                    'scores': det_instances.scores[0][valid_mask],
                 }
             }
             self.coco_evaluator.update(det_res, verbose=False)
             
     def summarize_detection_metrics(self):
         if 'det' in self.mot_or_det:
-            dist.sync_all_rank()
-            self.coco_evaluator.synchronize_between_processes()
-            self.coco_evaluator.accumulate()
-            results = self.coco_evaluator.summarize()['bbox']
+            try: # just evaluate the tracking results, not run the model
+                dist.sync_all_rank()
+                self.coco_evaluator.synchronize_between_processes()
+                self.coco_evaluator.accumulate()
+                results = self.coco_evaluator.summarize()['bbox']
 
-            bbox_metrics = self.coco_evaluator.coco_eval['bbox'].stats
+                bbox_metrics = self.coco_evaluator.coco_eval['bbox'].stats
 
-            save_path = os.path.join(self.result_dir, 'detection_det_results.txt')
-            if 'mot' in self.mot_or_det:
-                save_path = os.path.join(self.result_dir, 'detection_mot_results.txt')
-            if dist.is_main_process():
-                with open(save_path, 'w') as f:
-                    f.write(str(bbox_metrics)+'\n')
-                    f.write(results)
-                print('results saved to {}'.format(save_path)) 
+                save_path = os.path.join(self.result_dir, 'detection_det_results.txt')
+                if 'mot' in self.mot_or_det:
+                    save_path = os.path.join(self.result_dir, 'detection_mot_results.txt')
+                if dist.is_main_process():
+                    with open(save_path, 'w') as f:
+                        f.write(str(bbox_metrics)+'\n')
+                        f.write(results)
+                    print('results saved to {}'.format(save_path)) 
+            except:
+                pass 
 
     def eval_video_tracking_results(self):
         if 'mot' in self.mot_or_det:
@@ -273,7 +285,27 @@ class MOTRTracker(object):
     def summarize_tracking_metrics(self):
         if 'mot' in self.mot_or_det:
             dist.sync_all_rank()
-            metrics = mm.metrics.motchallenge_metrics
+            # metrics = mm.metrics.motchallenge_metrics
+            metrics = [
+                "idf1",
+                # "idp",
+                # "idr",
+                "recall",
+                # "precision",
+                "num_unique_objects",
+                "mostly_tracked",
+                # "partially_tracked",
+                "mostly_lost",
+                "num_false_positives",
+                "num_misses",
+                "num_switches",
+                "num_fragmentations",
+                "mota",
+                "motp",
+                # "num_transfer",
+                # "num_ascend",
+                # "num_migrate",
+            ]
             namemap=mm.io.motchallenge_metric_names
             metrics.extend(["deta_alpha", "assa_alpha", "hota_alpha"])
             namemap.update({
@@ -281,15 +313,6 @@ class MOTRTracker(object):
                 "assa_alpha": "ASSA", 
                 "deta_alpha": "DETA"
             })
-
-            # import pdb; pdb.set_trace()
-            
-            # # import pdb; pdb.set_trace()
-            # import torch.distributed as tdist
-            # world_size = dist.get_world_size()
-            # data_list = [None] * world_size
-            # tdist.all_gather_object(data_list, self.track_accs)
-
 
             track_accs = dist.all_gather(self.track_accs)
             track_video_names = dist.all_gather(self.track_video_names)
@@ -302,7 +325,6 @@ class MOTRTracker(object):
             accs_names = sorted(accs_names, key=lambda x: x[1])
             track_accs, track_video_names = zip(*accs_names)
             summary = Evaluator.get_summary(track_accs, track_video_names, metrics)
-            # summary = Evaluator.get_summary(self.track_accs, self.track_video_names, metrics)
             
             strsummary = mm.io.render_summary(
                 summary,
@@ -313,18 +335,18 @@ class MOTRTracker(object):
             if dist.is_main_process():
                 print(strsummary)
 
-                try:
-                    save_path = os.path.join(self.result_dir, 'tracking_results.csv')
-                    Evaluator.save_summary(summary=summary, filename=save_path)
-                    print('results saved to {}'.format(save_path))
-                except:
-                    save_path = os.path.join(self.result_dir, 'tracking_results.txt')
-                    with open(save_path, 'w') as f:
-                        print(strsummary, file=f)
-                    print('results saved to {}'.format(save_path)) 
+                save_path = os.path.join(self.result_dir, 'tracking_results.xlsx')
+                Evaluator.save_summary(summary=summary, filename=save_path, namemap=namemap, formatters=mm.metrics.create().formatters)
+                print('results saved to {}'.format(save_path))
 
-    def visualize_img_with_bbox(frame_id, img, object_instances: Instances, ref_pts=None, box_type='track'):
+                save_path = os.path.join(self.result_dir, 'tracking_results.txt')
+                with open(save_path, 'w') as f:
+                    print(strsummary, file=f)
+                print('results saved to {}'.format(save_path)) 
+
+    def visualize_img_with_bbox(self, frame_id, img, object_instances: BatchInstances, video_name, ref_pts=None, box_type='track'):
         assert box_type in ['track', 'det', 'gt']
+        # import pdb; pdb.set_trace()
         img = cv2.cvtColor(img, cv2.COLOR_RGB2BGR)
 
         # padding the image to show the box more clear
@@ -334,13 +356,13 @@ class MOTRTracker(object):
         img_show[padding:padding+h, padding:padding+w,:] = img
 
         if object_instances.has('scores'):
-            boxes = np.concatenate([object_instances.boxes, object_instances.scores.reshape(-1, 1)], axis=-1)
+            boxes = np.concatenate([object_instances.boxes[0], object_instances.scores[0].reshape(-1, 1)], axis=-1)
         else:
-            boxes = object_instances.boxes
+            boxes = object_instances.boxes[0]
         if box_type == 'det':
-            identities = object_instances.labels
+            identities = object_instances.labels[0]
         else:
-            identities = object_instances.obj_ids
+            identities = object_instances.obj_ids[0]
         img_show = draw_bboxes(img_show, boxes, identities, offset=(padding, padding))
 
         if ref_pts is not None:
@@ -355,7 +377,7 @@ class MOTRTracker(object):
             img_path = os.path.join(self.visualize_dir, box_type, 'frame_{}.jpg'.format(frame_id))
             cv2.imwrite(img_path, img_show)
         elif 'show' in self.visualize:
-            cv2.imshow(box_type,img_show)
+            cv2.imshow('{}_{}'.format(video_name, box_type), img_show)
             pause = 'pause' in self.visualize
             if cv2.waitKey(0 if pause else 1) == 27: # press esc to quit
                 # cv2.destroyAllWindows()
@@ -363,14 +385,16 @@ class MOTRTracker(object):
 
     def instances_to_mot_format(self, dt_instances: Instances):
         ret = []
-        for i in range(len(dt_instances)):
-            label = dt_instances.labels[i]
+        for i in range(len(dt_instances.labels[0])):
+            if not dt_instances.valid_mask[0][i]:
+                continue
+            label = dt_instances.labels[0][i]
             if self.remap_category:
                 label = LABEL2CATEGORY_DICT[self.remap_category][label]
-            id = dt_instances.obj_ids[i] # + 1 #TODO: should id be added by 1?
+            id = dt_instances.obj_ids[0][i] # + 1 #TODO: should id be added by 1?
             # if id < 0:
             #     continue
-            box_with_score = np.concatenate([dt_instances.boxes[i], dt_instances.scores[i:i+1]], axis=-1)
+            box_with_score = np.concatenate([dt_instances.boxes[0][i], dt_instances.scores[0][i:i+1]], axis=-1)
             ret.append(np.concatenate((box_with_score, [label, id])).reshape(1, -1))  # +1 as MOT benchmark requires positive
 
         if len(ret) > 0:
@@ -390,86 +414,86 @@ class MOTRTracker(object):
                 os.makedirs(self.visualize_dir, exist_ok=True)
 
     def track_one_video(self, video_idx, total_num_videos):
-        total_tracks = 0
-        track_instances = None
-        max_id = 0
-        desc = 'Rank {}: {}, {}/{}'.format(dist.get_rank(), self.dataset.current_video_name, video_idx, total_num_videos)
-        for i in tqdm(range(0, len(self.dataset)), position=dist.get_rank(), desc=desc):
-            data = self.dataset[i]
+        track_result_txt_path = os.path.join(self.result_dir, '{}.txt'.format(self.dataset.current_video_name))
 
-            if track_instances is not None:
-                track_instances.remove('boxes')
-                track_instances.remove('labels')
-
-            res = self.model.inference_single_image(
-                            img=data['image'].unsqueeze(dim=0).cuda().float(), 
-                            orig_img_size=data['origin_image_wh'], 
-                            track_instances=track_instances
-                        )
-            
-            if 'mot' in self.mot_or_det: # only evaluate the performance of detection
-                track_instances = res['track_instances']
-
-                if self.clip_box:
-                    boxes = track_instances.boxes # x1, y1 x2, y2
-                    boxes[0::2] = boxes[0::2].clamp(0, data['origin_image_wh'][0])
-                    boxes[1::2] = boxes[1:2].clamp(0, data['origin_image_wh'][1])
-                    track_instances.boxes = boxes
-                
-                # import pdb; pdb.set_trace()
-                # track_instances = self.filter_dt_by_area(track_instances) #TODO:
-
-                max_id = max(max_id, track_instances.obj_ids.max().item())
-
-                all_ref_pts = res.get('ref_pts', None)
-                all_ref_pts = all_ref_pts[0,:,:2].to('cpu').numpy() if all_ref_pts is not None else None
-
-                track_instances_out = track_instances.to(torch.device('cpu'))
-                
-                # filter det instances by score.   
-                track_instances_out = self.filter_dt_by_score(track_instances_out)
-                track_instances_out = self.filter_dt_by_area(track_instances_out)
-                track_instances_out = self.filter_dt_by_object_id(track_instances_out)
-                
-                total_tracks += len(track_instances_out)
-                if self.visualize:
-                    # for visual
-                    assert i+1 == data['frame_id']
-                    self.visualize_img_with_bbox(data['frame_id'], data['origin_image'], track_instances_out, ref_pts=all_ref_pts, box_type='track')
-
-                tracker_outputs = self.instances_to_mot_format(track_instances_out)
-                self.track_results[data['frame_id']] = tracker_outputs
-                # self.write_tracking_results(txt_path=os.path.join(self.result_dir, '{}.txt'.format(self.dataset.current_video_name)),
-                #                 frame_id=data['frame_id'],
-                #                 bbox_xyxy=tracker_outputs[:, :4],
-                #                 identities=tracker_outputs[:, 6],
-                #                 labels=tracker_outputs[:, 5],
-                #                 dataset_name=self.dataset.dataset_name)
-            
-            if 'det' in self.mot_or_det:
-                # save detection results
-                det_instances_out = res['det_instances']
-                det_instances_out = self.keep_top_k(det_instances_out, topk=100)
-                if self.clip_box:
-                    boxes = det_instances_out.boxes # x1, y1 x2, y2
-                    boxes[0::2] = boxes[0::2].clamp(0, data['origin_image_wh'][0])
-                    boxes[1::2] = boxes[1:2].clamp(0, data['origin_image_wh'][1])
-                    det_instances_out.boxes = boxes
-                self.eval_frame_detection_results(det_instances_out, image_id=data['image_id'])
-                if self.visualize:
-                    self.visualize_img_with_bbox(data['frame_id'], data['origin_image'], det_instances_out.to(torch.device('cpu')), box_type='det')
-
-                
-
-            
-            if self.visualize and 'targets' in data:
-                    # for visual
-                    self.visualize_img_with_bbox(data['frame_id'], data['origin_image'], data['targets'], box_type='gt')
-
-        if 'mot' in self.mot_or_det:
-            self.write_tracking_results(txt_path=os.path.join(self.result_dir, '{}.txt'.format(self.dataset.current_video_name)), dataset_name=self.dataset.dataset_name)
+        if os.path.exists(track_result_txt_path): # just evaluate this txt files
             self.eval_video_tracking_results()
-            print("Rank {}: totally {} dts max_id={}".format(dist.get_rank(), total_tracks, max_id))
+        else:
+            total_tracks = 0
+            track_instances = None
+            max_id = 0
+            desc = 'Rank {}: {}, {}/{}'.format(dist.get_rank(), self.dataset.current_video_name, video_idx, total_num_videos)
+            for i in tqdm(range(0, len(self.dataset)), position=dist.get_rank(), desc=desc):
+                data = self.dataset[i]
+
+                if track_instances is not None:
+                    track_instances.remove('boxes')
+                    track_instances.remove('labels')
+
+                res = self.model.inference_single_image(
+                                img=data['image'].unsqueeze(dim=0).cuda().float(),  
+                                orig_img_size=data['origin_image_wh'], 
+                                track_instances=track_instances
+                            )
+                
+                if 'mot' in self.mot_or_det: # only evaluate the performance of detection
+                    track_instances = res['track_instances']
+
+                    if self.clip_box:
+                        boxes = track_instances.boxes # x1, y1 x2, y2
+                        boxes[:, 0::2] = boxes[:, 0::2].clamp(0, data['origin_image_wh'][0])
+                        boxes[:,1::2] = boxes[:, 1:2].clamp(0, data['origin_image_wh'][1])
+                        track_instances.boxes = boxes
+                    
+                    # import pdb; pdb.set_trace()
+                    # track_instances = self.filter_dt_by_area(track_instances) #TODO:
+
+                    max_id = max(max_id, track_instances.obj_ids[0].max().item())
+
+                    all_ref_pts = res.get('ref_pts', None)
+                    all_ref_pts = all_ref_pts[0,:,:2].to('cpu').numpy() if all_ref_pts is not None else None
+
+                    track_instances_out = track_instances.to(torch.device('cpu'))
+                    
+                    # filter det instances by score.   
+                    track_instances_out = self.filter_dt_by_score(track_instances_out)
+                    track_instances_out = self.filter_dt_by_area(track_instances_out)
+                    track_instances_out = self.filter_dt_by_object_id(track_instances_out)
+                    track_instances_out = BatchInstances.remove_invalid(track_instances_out)
+                    
+                    total_tracks += track_instances_out.obj_ids.shape[1]
+                    if self.visualize:
+                        # for visual
+                        assert i+1 == data['frame_id']
+                        # import pdb; pdb.set_trace()
+                        self.visualize_img_with_bbox(data['frame_id'], data['origin_image'], track_instances_out, video_name=self.dataset.current_video_name, box_type='track')
+
+                    tracker_outputs = self.instances_to_mot_format(track_instances_out)
+                    self.track_results[data['frame_id']] = tracker_outputs
+                
+                if 'det' in self.mot_or_det:
+                    # save detection results
+                    det_instances_out = res['det_instances']
+                    det_instances_out = self.keep_top_k(det_instances_out, topk=100)
+                    det_instances_out = BatchInstances.remove_invalid(det_instances_out)
+                    if self.clip_box:
+                        boxes = det_instances_out.boxes # x1, y1 x2, y2
+                        boxes[:, 0::2] = boxes[:, 0::2].clamp(0, data['origin_image_wh'][0])
+                        boxes[:, 1::2] = boxes[:, 1:2].clamp(0, data['origin_image_wh'][1])
+                        det_instances_out.boxes = boxes
+                    self.eval_frame_detection_results(det_instances_out, image_id=data['image_id'])
+                    if self.visualize:
+                        self.visualize_img_with_bbox(data['frame_id'], data['origin_image'], det_instances_out.to(torch.device('cpu')), video_name=self.dataset.current_video_name, box_type='det')
+
+                    
+                if self.visualize and 'targets' in data:
+                    # for visual
+                    self.visualize_img_with_bbox(data['frame_id'], data['origin_image'], BatchInstances.stack([data['origin_targets']]), video_name=self.dataset.current_video_name, box_type='gt')
+
+            if 'mot' in self.mot_or_det:
+                self.write_tracking_results(txt_path=track_result_txt_path, dataset_name=self.dataset.dataset_name)
+                self.eval_video_tracking_results()
+                print("Rank {}: totally {} dts max_id={}".format(dist.get_rank(), total_tracks, max_id))
 
 
     def track(self):
