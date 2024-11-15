@@ -1,0 +1,8 @@
+tracker:
+  type: MOTRTracker
+  mot_or_det: mot_det
+  # remap_category: false
+  score_thresh: 0.7
+  area_threshold: 100 
+  visualize: null 
+  clip_box: false

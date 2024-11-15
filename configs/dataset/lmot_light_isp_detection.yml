@@ -1,0 +1,88 @@
+task: detection
+
+num_classes: 7 # 6 + 1, 1 is for background
+remap_category: False
+
+train_dataloader: 
+  type: DataLoader
+  dataset: 
+    type: LMOTDetection
+    img_folder: ./dataset/LMOT/images
+    ann_file: ./dataset/LMOT/annotations/train_img_light_isp.json
+    visibility_thr: 0.5
+    transforms:
+      type: Compose
+      ops: ~
+  shuffle: True
+  batch_size: 8
+  num_workers: 4
+  drop_last: True 
+
+
+eval_train_dataloader: 
+  type: DataLoader
+  dataset: 
+    type: LMOTDetection
+    img_folder: ./dataset/LMOT/images
+    ann_file: ./dataset/LMOT/annotations/train_img_light_isp.json
+    visibility_thr: -1
+    clip_box: False 
+    transforms:
+      type: Compose
+      ops: ~
+  shuffle: False
+  batch_size: 8
+  num_workers: 4
+  drop_last: False 
+
+
+val_dataloader:
+  type: DataLoader
+  dataset: 
+    type: LMOTDetection
+    img_folder: ./dataset/LMOT/images
+    ann_file: ./dataset/LMOT/annotations/val_img_light_isp.json
+    visibility_thr: -1
+    clip_box: False 
+    transforms:
+      type: Compose
+      ops: ~ 
+
+  shuffle: False
+  batch_size: 8
+  num_workers: 4
+  drop_last: False
+
+test_dataloader:
+  type: DataLoader
+  dataset: 
+    type: LMOTDetection
+    img_folder: ./dataset/LMOT/images
+    ann_file: ./dataset/LMOT/annotations/test_img_light_isp.json
+    visibility_thr: -1
+    clip_box: False 
+    transforms:
+      type: Compose
+      ops: ~ 
+
+  shuffle: False
+  batch_size: 8
+  num_workers: 4
+  drop_last: False
+
+real_dataloader:
+  type: DataLoader
+  dataset: 
+    type: LMOTDetection
+    img_folder: ./dataset/LMOT/images
+    ann_file: ./dataset/LMOT/annotations/real_img_real_ns_isp.json
+    visibility_thr: -1
+    clip_box: False 
+    transforms:
+      type: Compose
+      ops: ~ 
+
+  shuffle: False
+  batch_size: 8
+  num_workers: 4
+  drop_last: False

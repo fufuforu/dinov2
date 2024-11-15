@@ -1,0 +1,1 @@
+torchrun --nproc_per_node=2 tools/train.py -c configs/rt_detr_lmot_det/rtdetr_r50vd_lmot_light_isp.yml -t output/rtdetr_r50vd_2x_coco_objects365_from_paddle.pth

@@ -1,0 +1,86 @@
+
+train_dataloader: 
+  dataset: 
+    return_masks: False
+    transforms:
+      ops:
+        # - {type: RandomPhotometricDistort, p: 0.5}
+        - {type: RandomZoomOut, fill: 0} # support batch
+        - {type: RandomIoUCrop, p: 0.8} # support batch
+        - {type: SanitizeBoundingBox, min_size: 1}
+        - {type: RandomHorizontalFlip} # support batch
+        - {type: Resize, size: [640, 640], antialias: True} # support batch
+        # - {type: Resize, size: 639, max_size: 640}
+        # - {type: PadToSize, spatial_size: 640}
+        # - {type: ToImageTensor}
+        # - {type: ConvertDtype}
+        - {type: Normalize, mean: [0.0, 0.0, 0.0], std: [255.0, 255.0, 255.0]}
+        - {type: SanitizeBoundingBox, min_size: 1}
+        - {type: ConvertBox, out_fmt: 'cxcywh', normalize: True}
+  shuffle: True
+  batch_size: 4
+  num_workers: 4
+  collate_fn: default_collate_fn
+
+
+eval_train_dataloader: 
+  dataset: 
+    transforms:
+      ops: 
+        # - {type: Resize, size: 639, max_size: 640}
+        # - {type: PadToSize, spatial_size: 640}
+        - {type: Resize, size: [640, 640], antialias: True}
+        # - {type: ToImageTensor}
+        # - {type: ConvertDtype}
+        - {type: Normalize, mean: [0.0, 0.0, 0.0], std: [255.0, 255.0, 255.0]}
+  shuffle: False
+  batch_size: 8
+  num_workers: 4
+  collate_fn: default_collate_fn
+
+
+val_dataloader:
+  dataset: 
+    transforms:
+      ops: 
+        # - {type: Resize, size: 639, max_size: 640}
+        # - {type: PadToSize, spatial_size: 640}
+        - {type: Resize, size: [640, 640], antialias: True}
+        # - {type: ToImageTensor}
+        # - {type: ConvertDtype}
+        - {type: Normalize, mean: [0.0, 0.0, 0.0], std: [255.0, 255.0, 255.0]}
+  shuffle: False
+  batch_size: 8
+  num_workers: 0 #TODO: 4
+  collate_fn: default_collate_fn
+
+
+test_dataloader:
+  dataset: 
+    transforms:
+      ops: 
+        # - {type: Resize, size: 639, max_size: 640}
+        # - {type: PadToSize, spatial_size: 640}
+        - {type: Resize, size: [640, 640], antialias: True}
+        # - {type: ToImageTensor}
+        # - {type: ConvertDtype}
+        - {type: Normalize, mean: [0.0, 0.0, 0.0], std: [255.0, 255.0, 255.0]}
+  shuffle: False
+  batch_size: 8
+  num_workers: 4
+  collate_fn: default_collate_fn
+
+real_dataloader:
+  dataset: 
+    transforms:
+      ops: 
+        # - {type: Resize, size: 639, max_size: 640}
+        # - {type: PadToSize, spatial_size: 640}
+        - {type: Resize, size: [640, 640], antialias: True}
+        # - {type: ToImageTensor}
+        # - {type: ConvertDtype}
+        - {type: Normalize, mean: [0.0, 0.0, 0.0], std: [255.0, 255.0, 255.0]}
+  shuffle: False
+  batch_size: 8
+  num_workers: 4
+  collate_fn: default_collate_fn

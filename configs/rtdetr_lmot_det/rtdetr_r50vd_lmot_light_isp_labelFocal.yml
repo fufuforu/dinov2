@@ -1,0 +1,25 @@
+__include__: [
+  '../dataset/lmot_light_isp_detection.yml',
+  '../runtime.yml',
+  './include/dataloader.yml',
+  './include/optimizer.yml',
+  './include/rtdetr_r50vd.yml',
+]
+
+
+
+HybridEncoder:
+  attn: 'QuantMultiheadAttention'
+
+
+
+RTDETRTransformer:
+  attn: 'QuantMultiheadAttention'
+
+
+SetCriterion:
+  losses: ['focal', 'boxes', ]
+
+
+epoches: 20
+# output_dir: ./output/rtdetr_r50vd_lmot_light_isp_det

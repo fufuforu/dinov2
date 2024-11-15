@@ -1,0 +1,9 @@
+dataset/
+!configs/dataset
+*__pycache__/
+output/
+build/
+*.egg
+*.egg-info
+*.mp4
+*/build/
