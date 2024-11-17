@@ -73,7 +73,7 @@ def create(type_or_name, **kwargs):
     '''
     '''
     assert type(type_or_name) in (type, str), 'create should be class or name.'
-
+    #import pdb;pdb.set_trace()
     name = type_or_name if isinstance(type_or_name, str) else type_or_name.__name__
 
     if name in GLOBAL_CONFIG:
@@ -98,7 +98,7 @@ def create(type_or_name, **kwargs):
     
     cls_kwargs = {}
     cls_kwargs.update(cfg)
-    
+    #import pdb;pdb.set_trace()  #debug
     # shared var
     for k in cfg['_share']:
         if k in GLOBAL_CONFIG:
@@ -159,7 +159,7 @@ def load_config(file_path, cfg=dict()):
         file_cfg = yaml.load(f, Loader=yaml.Loader)
         if file_cfg is None:
             return {}
-
+    #import pdb;pdb.set_trace()  #debug
     if INCLUDE_KEY in file_cfg:
         base_yamls = list(file_cfg[INCLUDE_KEY])
         base_yamls_with_full_path = []

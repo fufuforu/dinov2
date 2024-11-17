@@ -17,6 +17,7 @@ class YAMLConfig(BaseConfig):
         super().__init__()
 
         cfg = load_config(cfg_path)
+        #import pdb;pdb.set_trace()  #debug
         merge_dict(cfg, kwargs)
         merge_opts_to_config(cfg, opts)
         
@@ -73,6 +74,7 @@ class YAMLConfig(BaseConfig):
     @property
     def model(self, ) -> torch.nn.Module:
         if self._model is None and 'model' in self.yaml_cfg:
+            #import pdb; pdb.set_trace()
             merge_config(self.yaml_cfg)
             # import pdb; pdb.set_trace()
             self._model = create(self.yaml_cfg['model'])
@@ -98,6 +100,7 @@ class YAMLConfig(BaseConfig):
         if self._optimizer is None and 'optimizer' in self.yaml_cfg:
             merge_config(self.yaml_cfg)
             params = self.get_optim_params(self.yaml_cfg['optimizer'], self.model)
+            #import pdb;pdb.set_trace()
             self._optimizer = create('optimizer', params=params)
 
         return self._optimizer
@@ -196,13 +199,13 @@ class YAMLConfig(BaseConfig):
             visited.extend(list(params.keys()))
 
         names = [k for k, v in model.named_parameters() if v.requires_grad]
-
+        #sumparam = sum(p.numel() for p in model.backbone.parameters())
         if len(visited) < len(names):
             unseen = set(names) - set(visited)
             params = {k: v for k, v in model.named_parameters() if v.requires_grad and k in unseen}
             param_groups.append({'params': params.values()})
             visited.extend(list(params.keys()))
-
+        import pdb;pdb.set_trace()
         assert len(visited) == len(names), ''
 
         return param_groups

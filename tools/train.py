@@ -9,6 +9,7 @@ import argparse
 import src.misc.dist as dist 
 from src.core import YAMLConfig 
 from src.solver import TASKS
+import pdb
 
 
 def main(args, ) -> None:
@@ -28,9 +29,9 @@ def main(args, ) -> None:
         run_type=args.run_type,
         eval_data=args.eval_data
     )
-
+    #pdb.set_trace()  #debug
     solver = TASKS[cfg.yaml_cfg['task']](cfg)
-    
+    #
     if args.run_type == 'eval':
         solver.val()
     elif args.run_type == 'train':
@@ -60,5 +61,5 @@ if __name__ == '__main__':
     )
 
     args = parser.parse_args()
-
+    #pdb.set_trace()  #debug
     main(args)

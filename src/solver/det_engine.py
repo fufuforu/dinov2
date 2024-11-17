@@ -21,6 +21,12 @@ from src.misc import (MetricLogger, SmoothedValue, reduce_dict)
 def train_one_epoch(model: torch.nn.Module, criterion: torch.nn.Module,
                     data_loader: Iterable, optimizer: torch.optim.Optimizer,
                     device: torch.device, epoch: int, max_norm: float = 0, **kwargs):
+    
+    # 冻结 backbone 的参数
+    if hasattr(model, 'backbone'):
+        for param in model.backbone.parameters():
+            param.requires_grad = False
+
     model.train()
     criterion.train()
     metric_logger = MetricLogger(delimiter="  ")

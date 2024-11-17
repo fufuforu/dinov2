@@ -27,6 +27,7 @@ class BaseSolver(object):
 
         # import pdb; pdb.set_trace()
         self.model = dist.warp_model(cfg.model.to(device), cfg.find_unused_parameters, cfg.sync_bn)
+        # import pdb; pdb.set_trace()
         self.criterion = cfg.criterion.to(device)
         self.postprocessor = cfg.postprocessor
 
@@ -44,6 +45,7 @@ class BaseSolver(object):
 
     def train(self, ):
         self.setup(load_tuning_last_epoch=False)
+        #import pdb;pdb.set_trace()
         self.optimizer = self.cfg.optimizer
         self.lr_scheduler = self.cfg.lr_scheduler
 

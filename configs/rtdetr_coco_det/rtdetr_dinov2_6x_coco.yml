@@ -1,0 +1,9 @@
+__include__: [
+  '../dataset/coco_detection.yml',
+  '../runtime.yml',
+  './include/dataloader.yml',
+  './include/optimizer.yml',
+  './include/rtdetr_dinov2.yml',
+]
+
+output_dir: ./output/rtdetr_dinov2_6x_coco
