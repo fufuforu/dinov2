@@ -30,6 +30,12 @@ donwload_url = {
     101: 'https://github.com/lyuwenyu/storage/releases/download/v0.1/ResNet101_vd_ssld_pretrained_from_paddle.pth',
 }
 
+download_path = {
+    18: '',
+    34: '',
+    50: 'models/ResNet50_vd_ssld_v2_pretrained_from_paddle.pth',
+    101: '',
+}
 
 class BasicBlock(nn.Module):
     expansion = 1
@@ -194,7 +200,8 @@ class PResNet(nn.Module):
             self._freeze_norm(self)
 
         if pretrained:
-            state = torch.hub.load_state_dict_from_url(donwload_url[depth])
+            #state = torch.hub.load_state_dict_from_url(donwload_url[depth])
+            state = torch.load(download_path[depth])
             self.load_state_dict(state)
             print(f'Load PResNet{depth} state_dict')
             
@@ -220,6 +227,7 @@ class PResNet(nn.Module):
             x = stage(x)
             if idx in self.return_idx:
                 outs.append(x)
+            #import pdb;pdb.set_trace()
         return outs
 
 

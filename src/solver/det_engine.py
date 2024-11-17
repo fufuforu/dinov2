@@ -22,10 +22,6 @@ def train_one_epoch(model: torch.nn.Module, criterion: torch.nn.Module,
                     data_loader: Iterable, optimizer: torch.optim.Optimizer,
                     device: torch.device, epoch: int, max_norm: float = 0, **kwargs):
     
-    # 冻结 backbone 的参数
-    if hasattr(model, 'backbone'):
-        for param in model.backbone.parameters():
-            param.requires_grad = False
 
     model.train()
     criterion.train()
@@ -41,7 +37,7 @@ def train_one_epoch(model: torch.nn.Module, criterion: torch.nn.Module,
     for samples, targets in metric_logger.log_every(data_loader, print_freq, header):
         samples = samples.to(device)
         targets = [{k: v.to(device) for k, v in t.items()} for t in targets]
-        # import pdb; pdb.set_trace()
+        #import pdb; pdb.set_trace()
 
         if scaler is not None:
             with torch.autocast(device_type=str(device), cache_enabled=True):

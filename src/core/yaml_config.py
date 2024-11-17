@@ -20,8 +20,7 @@ class YAMLConfig(BaseConfig):
         #import pdb;pdb.set_trace()  #debug
         merge_dict(cfg, kwargs)
         merge_opts_to_config(cfg, opts)
-        
-        # pprint(cfg)
+
         self.cfg_path = cfg_path
         self.yaml_cfg = cfg 
 
@@ -69,7 +68,7 @@ class YAMLConfig(BaseConfig):
             write_args(cfg, save_path=arg_save_path)
 
             # save args
-            
+        #import pdb;pdb.set_trace()  #debug        
 
     @property
     def model(self, ) -> torch.nn.Module:
@@ -192,20 +191,23 @@ class YAMLConfig(BaseConfig):
         param_groups = []
         visited = []
         for pg in cfg['params']:
+            
             pattern = pg['params']
             params = {k: v for k, v in model.named_parameters() if v.requires_grad and len(re.findall(pattern, k)) > 0}
             pg['params'] = params.values()
             param_groups.append(pg)
             visited.extend(list(params.keys()))
 
+        
         names = [k for k, v in model.named_parameters() if v.requires_grad]
+        #import pdb;pdb.set_trace()
         #sumparam = sum(p.numel() for p in model.backbone.parameters())
         if len(visited) < len(names):
             unseen = set(names) - set(visited)
             params = {k: v for k, v in model.named_parameters() if v.requires_grad and k in unseen}
             param_groups.append({'params': params.values()})
             visited.extend(list(params.keys()))
-        import pdb;pdb.set_trace()
+        
         assert len(visited) == len(names), ''
 
         return param_groups

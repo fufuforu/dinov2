@@ -80,6 +80,8 @@ class DINOv2EncoderViT(nn.Module):
                     kernel_size=1,
                     bias=False,
                 )
+        for n, param in self.encoder.named_parameters():
+            param.requires_grad = False
 
     def get_enc_embs(self, pixel_values: torch.FloatTensor):
         b, _, h, w = pixel_values.shape
@@ -90,6 +92,11 @@ class DINOv2EncoderViT(nn.Module):
         return image_embeddings
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
+        
         x = self.get_enc_embs(x)
         x = self.neck(x)
+        # import pdb;pdb.set_trace()
+        # # x = self.get_enc_embs(x)
+        # x = self.neck(x)
+        # pdb.set_trace()
         return x
