@@ -29,7 +29,7 @@ def main(args, ) -> None:
         run_type=args.run_type,
         eval_data=args.eval_data
     )
-    #pdb.set_trace()  #debug
+    pdb.set_trace()  #debug
     solver = TASKS[cfg.yaml_cfg['task']](cfg)
     #
     if args.run_type == 'eval':

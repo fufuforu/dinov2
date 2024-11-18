@@ -220,6 +220,7 @@ class PResNet(nn.Module):
         return m
 
     def forward(self, x):
+        #import pdb;pdb.set_trace()
         conv1 = self.conv1(x)
         x = F.max_pool2d(conv1, kernel_size=3, stride=2, padding=1)
         outs = []
@@ -227,7 +228,6 @@ class PResNet(nn.Module):
             x = stage(x)
             if idx in self.return_idx:
                 outs.append(x)
-            #import pdb;pdb.set_trace()
         return outs
 
 

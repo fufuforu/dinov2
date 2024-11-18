@@ -83,6 +83,16 @@ class DINOv2EncoderViT(nn.Module):
         for n, param in self.encoder.named_parameters():
             param.requires_grad = False
 
+    def train(self, mode: bool = True):
+        """
+        重写 train 方法，使得模型始终处于评估模式。
+        """
+        # 打印提示，方便调试
+        print("Overriding train(): Forcing evaluation mode.")
+        # 调用 eval() 强制设置为评估模式
+        super().train(False)
+        return self  # 保持与 PyTorch API 的兼容性
+
     def get_enc_embs(self, pixel_values: torch.FloatTensor):
         b, _, h, w = pixel_values.shape
         h, w = h // self.encoder.patch_size, w // self.encoder.patch_size
@@ -92,11 +102,15 @@ class DINOv2EncoderViT(nn.Module):
         return image_embeddings
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        
+        #import pdb;pdb.set_trace()
         x = self.get_enc_embs(x)
-        x = self.neck(x)
+        #x = self.neck(x)
+        upsampled_x = F.interpolate(x, scale_factor=2, mode='bilinear', align_corners=False)
+        downsampled_x = F.interpolate(x, scale_factor=0.5, mode='bilinear', align_corners=False)
         # import pdb;pdb.set_trace()
         # # x = self.get_enc_embs(x)
         # x = self.neck(x)
         # pdb.set_trace()
-        return x
+        #pdb.set_trace()
+        outs = [upsampled_x, x, downsampled_x]
+        return outs
